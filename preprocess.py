@@ -102,10 +102,11 @@ class PreProcess:
         
         
         self.scene.style_path = ""
-        for i, p in enumerate(style_images_path):
-            cur_path, _ = os.path.splitext(os.path.basename(p))
-            self.scene.style_path += cur_path
-        self.scene.style_path += method
+        # TODO: change path to dir_path
+        # for i, p in enumerate(style_images_path):
+        #     cur_path, _ = os.path.splitext(os.path.basename(p))
+        #     self.scene.style_path += cur_path
+        # self.scene.style_path += method
             
         self.pipe = pipe
         self.bg = bg
@@ -141,9 +142,9 @@ class PreProcess:
         
         # self.original_style_image = self.style_image
         # self.original_style_masks = self.style_masks
-        if self.style_type == "single_prompt":
-            # if erode or isolate:
-            self.postprocess(erode, isolate)
+        # if self.style_type == "single_prompt":
+        #     # if erode or isolate:
+        #     self.postprocess(erode, isolate)
         
         # render_RGBcolor_images("./debug/style.jpg", self.style_image)
         # render_depth_or_mask_images("./debug/style_mask.jpg", self.style_masks[0])
@@ -151,59 +152,59 @@ class PreProcess:
         
         # exit()
         
-    def postprocess(self, erode, isolate):
+    # def postprocess(self, erode, isolate):
         
         
-        if isolate:
-            final_style_masks = []
-            final_style_image = []
-        else:
-            final_style_masks = torch.full_like(self.style_masks[0], -1, device=self.device)
-            final_style_image = torch.zeros_like(self.style_image_list[0])
+    #     if isolate:
+    #         final_style_masks = []
+    #         final_style_image = []
+    #     else:
+    #         final_style_masks = torch.full_like(self.style_masks[0], -1, device=self.device)
+    #         final_style_image = torch.zeros_like(self.style_image_list[0])
         
-        for i in range(self.style_classes):
+    #     for i in range(self.style_classes):
             
-            original_mask = (self.style_masks[0] == i)
-            erode_mask = original_mask.cpu().numpy().astype(np.uint8) * 255
-            if erode:
-                kernel_size = 5
-                kernel = np.ones((kernel_size, kernel_size), np.uint8)
-                erode_mask = cv2.erode(erode_mask, kernel, iterations=1)
-            erode_mask = (erode_mask / 255).astype(bool)
+    #         original_mask = (self.style_masks[0] == i)
+    #         erode_mask = original_mask.cpu().numpy().astype(np.uint8) * 255
+    #         if erode:
+    #             kernel_size = 5
+    #             kernel = np.ones((kernel_size, kernel_size), np.uint8)
+    #             erode_mask = cv2.erode(erode_mask, kernel, iterations=1)
+    #         erode_mask = (erode_mask / 255).astype(bool)
             
             
-            if isolate:
-                cur_style_image = torch.full_like(self.style_image_list[0], 0, device=self.device)
-                cur_style_image[:, original_mask] = self.style_image_list[0][:, original_mask]
-                final_style_image.append(cur_style_image)
+    #         if isolate:
+    #             cur_style_image = torch.full_like(self.style_image_list[0], 0, device=self.device)
+    #             cur_style_image[:, original_mask] = self.style_image_list[0][:, original_mask]
+    #             final_style_image.append(cur_style_image)
                 
-                cur_style_masks = torch.full_like(self.style_masks[0], -1, device=self.device)
-                cur_style_masks[erode_mask] = i
-                final_style_masks.append(cur_style_masks)
-            else:
-                final_style_image[:, original_mask] = self.style_image_list[0][:, original_mask]
-                final_style_masks[erode_mask] = i
+    #             cur_style_masks = torch.full_like(self.style_masks[0], -1, device=self.device)
+    #             cur_style_masks[erode_mask] = i
+    #             final_style_masks.append(cur_style_masks)
+    #         else:
+    #             final_style_image[:, original_mask] = self.style_image_list[0][:, original_mask]
+    #             final_style_masks[erode_mask] = i
             
         
         
-        # for i in range(self.style_classes):
+    #     # for i in range(self.style_classes):
             
             
-        tmp_image = torch.zeros_like(self.style_image_list[0])
-        if isolate:
-            self.style_image_list = final_style_image
-            self.style_masks = final_style_masks
+    #     tmp_image = torch.zeros_like(self.style_image_list[0])
+    #     if isolate:
+    #         self.style_image_list = final_style_image
+    #         self.style_masks = final_style_masks
             
-            print(self.style_image_list[0].shape)
-            print(torch.sum(self.style_masks[0] == -1))
-            print(torch.sum(self.style_masks[0] == 0))
-            print(torch.sum(self.style_masks[1] == 1))
-            tmp_image[:, self.style_masks[0] == -1] = torch.tensor([[0], [0], [0]], device="cuda") / 255.0
-            tmp_image[:, self.style_masks[0] == 0] = torch.tensor([[120], [183], [201]], device="cuda") / 255.0
-            tmp_image[:, self.style_masks[1] == 1] = torch.tensor([[229], [139], [25]], device="cuda") / 255.0
-        else:
-            self.style_image_list = [final_style_image]
-            self.style_masks = [final_style_masks]
+    #         print(self.style_image_list[0].shape)
+    #         print(torch.sum(self.style_masks[0] == -1))
+    #         print(torch.sum(self.style_masks[0] == 0))
+    #         print(torch.sum(self.style_masks[1] == 1))
+    #         tmp_image[:, self.style_masks[0] == -1] = torch.tensor([[0], [0], [0]], device="cuda") / 255.0
+    #         tmp_image[:, self.style_masks[0] == 0] = torch.tensor([[120], [183], [201]], device="cuda") / 255.0
+    #         tmp_image[:, self.style_masks[1] == 1] = torch.tensor([[229], [139], [25]], device="cuda") / 255.0
+    #     else:
+    #         self.style_image_list = [final_style_image]
+    #         self.style_masks = [final_style_masks]
         
         # print(self.style_masks[0, 294], self.style_masks[0, 295])
         # for i in range(-1, self.style_classes):
@@ -234,18 +235,23 @@ class PreProcess:
         @param style_images_path: List of paths to the style images.
         @param style_prompt: String of the style prompt.
         """
-        
+        image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff'}
         self.style_image_list = []
-        for _, p in enumerate(style_images_path):
-            self.style_image_list.append(self.read_and_resize_image(p, 256))
+        # TODO: change path to dir_path
+        for root, dirs, files in os.walk(style_images_path):
+            for file in files:
+                if os.path.splitext(file)[1].lower() in image_extensions:
+                    self.style_image_list.append(self.read_and_resize_image(os.path.join(root, file), 256))
+        # for _, p in enumerate(style_images_path):
+        #     self.style_image_list.append(self.read_and_resize_image(p, 256))
         # self.style_image = torch.cat(self.style_image_list, dim=2)
         
-        if len(style_images_path) == 1 and style_prompt is None:
-            self.style_type = "single"
-        elif len(style_images_path) == 1 and style_prompt is not None:
-            self.style_type = "single_prompt"
-        else:
-            self.style_type = "multiple"
+        # if len(style_images_path) == 1 and style_prompt is None:
+        self.style_type = "single"
+        # elif len(style_images_path) == 1 and style_prompt is not None:
+        #     self.style_type = "single_prompt"
+        # else:
+        #     self.style_type = "multiple"
 
     def get_scene_weights(self, scene_prompt):
         """
@@ -370,41 +376,41 @@ class PreProcess:
             _, h, w = self.style_image_list[0].shape
             return [torch.zeros((h, w), device=self.device)]
     
-        if self.style_type == "multiple":
-            style_masks = []
-            for i, image in enumerate(self.style_image_list):
-                style_masks.append(torch.full((image.shape[-2:]), i))
-            return style_masks
+        # # if self.style_type == "multiple":
+        # #     style_masks = []
+        # #     for i, image in enumerate(self.style_image_list):
+        # #         style_masks.append(torch.full((image.shape[-2:]), i))
+        # #     return style_masks
         
-        assert self.style_type == "single_prompt"
+        # # assert self.style_type == "single_prompt"
         
-        style_name = os.path.basename(self.scene.style_path)
-        style_labels = split_prompt(style_prompt)
-        goal_path = f"./util_data/style/{style_name}/{style_prompt}.pt"
+        # style_name = os.path.basename(self.scene.style_path)
+        # style_labels = split_prompt(style_prompt)
+        # goal_path = f"./util_data/style/{style_name}/{style_prompt}.pt"
         
-        if os.path.exists(goal_path):
-            return [torch.load(goal_path).cuda()]
+        # if os.path.exists(goal_path):
+        #     return [torch.load(goal_path).cuda()]
         
-        os.makedirs(os.path.dirname(goal_path), exist_ok=True)
+        # os.makedirs(os.path.dirname(goal_path), exist_ok=True)
         
-        if self.model is None:
-            self.model = LangSAM()
+        # if self.model is None:
+        #     self.model = LangSAM()
             
-        _, h, w = self.style_image_list[0].shape
-        pil_image = ToPILImage(mode="RGB")(self.style_image_list[0])
-        style_mask = torch.zeros((h, w))
+        # _, h, w = self.style_image_list[0].shape
+        # pil_image = ToPILImage(mode="RGB")(self.style_image_list[0])
+        # style_mask = torch.zeros((h, w))
         
         
-        for i, label in enumerate(style_labels):
-            masks, _, _, _ = self.model.predict(pil_image, label)
-            if len(masks) == 0:
-                print(f"There's no {label} in this image")
-                continue
-            masks, _ = torch.max(masks, dim=0)
-            style_mask[masks > 0.7] = i + 1 
+        # for i, label in enumerate(style_labels):
+        #     masks, _, _, _ = self.model.predict(pil_image, label)
+        #     if len(masks) == 0:
+        #         print(f"There's no {label} in this image")
+        #         continue
+        #     masks, _ = torch.max(masks, dim=0)
+        #     style_mask[masks > 0.7] = i + 1 
 
-        torch.save(style_mask, goal_path)
-        return [style_mask]
+        # torch.save(style_mask, goal_path)
+        # return [style_mask]
 
     def color_transfer(self, gaussian_masks):
         """
@@ -423,7 +429,7 @@ class PreProcess:
                 
             style_pixels = []
             for j, style_image in enumerate(self.style_image_list):
-                style_pixels.append(style_image[:, (self.style_masks[j] == self.matches[i])].permute(1, 0))
+                style_pixels.append(style_image[:, :, :].permute(1, 2, 0))
             style_pixels = torch.cat(style_pixels, dim=0)
             
             image_pixels = origin_images[self.scene_masks == i, :]

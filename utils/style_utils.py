@@ -31,7 +31,7 @@ class StyleLoss(torch.nn.Module):
         self.style_classes = pre.style_classes
         self.device = pre.device
         
-        self.style_masks = pre.style_masks
+        # self.style_masks = pre.style_masks
         self.scene_masks = pre.scene_masks
         
         self.matches = pre.matches
@@ -49,13 +49,14 @@ class StyleLoss(torch.nn.Module):
                 self.style_feats.append(self.get_feats(style_image.unsqueeze(0)))
                 print(self.style_feats[_].shape)
             
-            self.style_masks = []
-            for i, mask in enumerate(pre.style_masks):
-                self.style_masks.append(labels_downscale(mask, self.style_feats[i].shape[-2:]))
+            # self.style_masks = []
+            # for i, mask in enumerate(pre.style_masks):
+            #     self.style_masks.append(labels_downscale(mask, self.style_feats[i].shape[-2:]))
                 
             
-            self.style_feats = torch.cat(self.style_feats, dim=2)
-            self.style_masks = torch.cat(self.style_masks, dim=1)
+            self.style_feats = torch.cat(self.style_feats, dim=1)
+            self.style_feats = self.style_feats.view(self.style_feats.shape[0], -1)
+            # self.style_masks = torch.cat(self.style_masks, dim=1)
         
     def get_matches(self):
         """
@@ -233,11 +234,11 @@ class FASTLoss(StyleLoss):
         with torch.no_grad():
             for i in range(self.scene_classes):
                 render_idx = (scene_mask == i)
-                style_idx = (self.style_masks == self.matches[i])
+                # style_idx = (self.style_masks == self.matches[i])
                 
                 target_feats[:, render_idx] = self.transform(
                     render_feats[:, render_idx],
-                    self.style_feats[:, style_idx])
+                    self.style_feats[:])
                 
         return cos_loss(target_feats, render_feats)
     

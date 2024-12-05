@@ -42,7 +42,7 @@ def training(
     checkpoint_iterations,
     checkpoint,
     debug_from,
-    style_image,
+    style_image_dir,
     style_prompt,
     scene_prompt,
     method,
@@ -70,7 +70,7 @@ def training(
     gaussians = GaussianModel(dataset.sh_degree)
     scene = Scene(dataset, gaussians, -1, shuffle=False)
     
-    prepare_output_and_logger(dataset, style_image, method)
+    prepare_output_and_logger(dataset, style_image_dir, method)
     
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
@@ -83,7 +83,7 @@ def training(
     
     gaussians.training_setup(opt)
     
-    pre = PreProcess(scene, style_image, scene_prompt, style_prompt, 
+    pre = PreProcess(scene, style_image_dir, scene_prompt, style_prompt, 
                      pipe, bg, "cuda", method, 
                      erode, isolate, color_transfer)
     
@@ -308,15 +308,15 @@ def training(
     
     
 
-def prepare_output_and_logger(args, style_image, method):
+def prepare_output_and_logger(args, style_image_dir, method):
     print("Training on " + args.source_path)
-    print(style_image)
+    print(style_image_dir)
     
-    style_img_base = ""
-    for i, p in enumerate(style_image):
-        cur_path, _ = os.path.splitext(os.path.basename(p))
-        style_img_base += cur_path
-    style_img_base += method
+    style_img_base = os.path.basename(style_image_dir)
+    # for i, p in enumerate(style_image):
+    #     cur_path, _ = os.path.splitext(os.path.basename(p))
+    #     style_img_base += cur_path
+    # style_img_base += method
         
     args.model_path = os.path.join("./output/style", os.path.basename(args.source_path) + "/" + style_img_base)
         
@@ -371,7 +371,7 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default=None)
     
-    parser.add_argument("--style_image", nargs='+', type=str, default=None)
+    parser.add_argument("--style_image", type=str, default=None)
     parser.add_argument("--style_prompt", type=str)
     parser.add_argument("--scene_prompt", type=str)
     parser.add_argument("--method", type=str, default="fast")
