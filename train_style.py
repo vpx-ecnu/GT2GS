@@ -183,6 +183,9 @@ def training(
             gaussians.use_filter()
             initial_opacity = gaussians._opacity.clone().detach()
             initial_scaling = gaussians._scaling.clone().detach()
+            gaussians._scaling.requires_grad_(False)
+            gaussians._xyz.requires_grad_(False)
+            gaussians._opacity.requires_grad_(False)
             
             
         if iteration == opt.style_until_iter:     
@@ -219,12 +222,13 @@ def training(
             
 
             loss = (
+                # 10 * style_loss
                 style_hyper * style_loss
-                + content_hyper * content_loss
+                # + content_hyper * content_loss
                 + 0.02 * img_tv_loss
                 + 0.01 * depth_loss
-                + loss_delta_opacity
-                + loss_delta_scaling
+                # + loss_delta_opacity
+                # + loss_delta_scaling
                 # + 0.05 * loss_delta_xyz
             )
             

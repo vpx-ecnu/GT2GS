@@ -135,9 +135,10 @@ class PreProcess:
         else:
             self.matches = override_matches
         
-        if color_transfer:
-            self.gaussian_masks = self.get_gaussian_masks(self.scene_weights)
-            self.color_transfer(self.gaussian_masks)
+        # TODO: fixed
+        # if color_transfer:
+        #     self.gaussian_masks = self.get_gaussian_masks(self.scene_weights)
+        #     self.color_transfer(self.gaussian_masks)
         
         
         # self.original_style_image = self.style_image
@@ -428,8 +429,10 @@ class PreProcess:
         for i in range(self.scene_classes):            
                 
             style_pixels = []
-            for j, style_image in enumerate(self.style_image_list):
-                style_pixels.append(style_image[:, :, :].permute(1, 2, 0))
+            # TODO:
+            # for j, style_image in enumerate(self.style_image_list):
+            #     style_pixels.append(style_image[:, :, :].permute(1, 2, 0))
+            style_pixels.append(self.style_image_list[0][:, :, :].permute(1, 2, 0))
             style_pixels = torch.cat(style_pixels, dim=0)
             
             image_pixels = origin_images[self.scene_masks == i, :]
@@ -437,7 +440,7 @@ class PreProcess:
             image_set, color_tf = self.match_colors(image_pixels, style_pixels)
             origin_images[self.scene_masks == i, :] = image_set
             
-            self.scene.gaussians.apply_ct(color_tf.detach().cpu().numpy(), gaussian_masks == i)
+            # self.scene.gaussians.apply_ct(color_tf.detach().cpu().numpy(), gaussian_masks == i)
             
         
         origin_images = origin_images.permute(0, 3, 1, 2)

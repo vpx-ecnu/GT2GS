@@ -16,7 +16,7 @@ def downsample_and_rotate(image_path, save_path):
 
     for i in range(0, 16):
         img_rotated = img_downsampled.rotate(22.5 * i, expand=True)
-        img_rotated = crop_op(img_rotated)
+        # img_rotated = crop_op(img_rotated)
         rotated_images.append(img_rotated)
     
     width, height = (W_crop, H_crop)

@@ -2,6 +2,7 @@ import torch
 import torchvision
 from torchvision.models import VGG16_Weights
 import torch.nn.functional as F
+from sklearn.cluster import KMeans
 
 def labels_downscale(labels, new_dim):
     """
@@ -47,15 +48,38 @@ class StyleLoss(torch.nn.Module):
             self.style_feats = []
             for _, style_image in enumerate(pre.style_image_list):
                 self.style_feats.append(self.get_feats(style_image.unsqueeze(0)))
-                print(self.style_feats[_].shape)
-            
-            # self.style_masks = []
-            # for i, mask in enumerate(pre.style_masks):
-            #     self.style_masks.append(labels_downscale(mask, self.style_feats[i].shape[-2:]))
-                
+                # print(self.style_feats[_].shape)
             
             self.style_feats = torch.cat(self.style_feats, dim=1)
-            self.style_feats = self.style_feats.view(self.style_feats.shape[0], -1)
+            
+            style_feats = self.style_feats  # [c, h, w]
+            c, h, w = style_feats.shape
+            style_feats_flat = style_feats.permute(1, 2, 0).reshape(-1, c)
+            print(style_feats_flat.shape)
+            style_feats_np = style_feats_flat.cpu().numpy()
+            num_clusters = 64
+            # 使用 KMeans 进行聚类
+            kmeans = KMeans(n_clusters=num_clusters, random_state=42, max_iter=300)
+            kmeans.fit(style_feats_np)
+
+            # 获取每个像素对应的聚类标签
+            cluster_labels = kmeans.labels_  # [h * w]
+
+            # 获取聚类中心
+            cluster_centers = kmeans.cluster_centers_  # [num_clusters, c]
+
+            # 将每个像素替换为其所属聚类的中心向量
+            discretized_feats_flat = torch.tensor(cluster_centers, device=style_feats.device)
+
+            # 将特征还原回原始形状 [c, h, w]
+            self.style_feats = discretized_feats_flat.view(-1, c).permute(1, 0)
+            print(self.style_feats.shape)
+                
+                
+            # self.style_masks = []
+            # for i, mask in enumerate(pre.style_masks):
+            #     self.style_masks.append(labels_downscale(mask, self.style_feats[i].shape[-2:]))                 
+            # self.style_feats = self.style_feats.view(self.style_feats.shape[0], -1)
             # self.style_masks = torch.cat(self.style_masks, dim=1)
         
     def get_matches(self):
@@ -238,7 +262,7 @@ class FASTLoss(StyleLoss):
                 
                 target_feats[:, render_idx] = self.transform(
                     render_feats[:, render_idx],
-                    self.style_feats[:])
+                    self.style_feats.view(self.style_feats.shape[0], -1)[:])
                 
         return cos_loss(target_feats, render_feats)
     
@@ -283,11 +307,16 @@ class NNFMLoss(StyleLoss):
             return cos_d.mean()
         
         def cosine_dists(a, b):
-            if len(a.shape) == 3:
+            if len(b.shape) == 3:
                 c, h, w = a.shape
                 
                 a = a.permute(1, 2, 0).view(-1, c)
                 b = b.permute(1, 2, 0).view(-1, c)
+            elif len(b.shape) == 2:
+                c, hw = b.shape
+                a = a.permute(1, 2, 0).view(-1, c)
+                b = b.permute(1, 0).view(-1, c)
+                
             a_norm = (a * a).sum(1, keepdims=True).sqrt()
             b_norm = (b * b).sum(1, keepdims=True).sqrt()
             a_tmp = a / (a_norm + 1e-8)
