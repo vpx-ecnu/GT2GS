@@ -12,6 +12,7 @@
 import torch
 from torch import nn
 import numpy as np
+import math
 from utils.graphics_utils import getWorld2View2, getProjectionMatrix
 
 class Camera(nn.Module):
@@ -59,6 +60,22 @@ class Camera(nn.Module):
         
         # print(self.full_proj_transform.dtype)
         self.camera_center = self.world_view_transform.inverse()[3, :3]
+        self.K = self.compute_intrinsics(self.FoVx, self.FoVy, self.image_width, self.image_height)
+        
+    # TODO: 其实K是一样的，不用每次都计算
+    def compute_intrinsics(self, FoVx, FoVy, image_width, image_height):
+        fx = 0.5 * image_width / (math.tan(FoVx / 2.0))  # 直接用数学计算
+        fy = 0.5 * image_height / (math.tan(FoVy / 2.0))
+        cx = image_width / 2.0
+        cy = image_height / 2.0
+
+        K = np.array([
+            [fx, 0, cx],
+            [0, fy, cy],
+            [0, 0, 1]
+        ], dtype=np.float32)
+        return K
+
 
 class MiniCam:
     def __init__(self, width, height, fovy, fovx, znear, zfar, world_view_transform, full_proj_transform):

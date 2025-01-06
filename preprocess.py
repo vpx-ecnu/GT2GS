@@ -217,7 +217,7 @@ class PreProcess:
         # exit()
         # print(self.style_masks.shape)
         
-        
+    # 生成depth的地方    
     def process_depth_images(self, gaussians):
         """
         Renders depth images and saves them into the viewpoint stack.

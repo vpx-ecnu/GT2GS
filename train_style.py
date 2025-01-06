@@ -31,7 +31,7 @@ from utils.loss_utils import l1_loss, ssim
 from utils.general_utils import safe_state
 from utils.style_utils import FASTLoss, NNFMLoss, KNNFMLoss, GRAMLoss
 
-from preprocess import PreProcess, render_RGBcolor_images
+from preprocess import PreProcess, render_RGBcolor_images, render_depth_or_mask_images
 
 
 def training(
@@ -169,6 +169,7 @@ def training(
         
         # print("??")
         render_RGBcolor_images("./image.jpg", image)
+        render_depth_or_mask_images("./depth.jpg", depth)
 
         # Loss
         gt_image = viewpoint_cam.original_image.cuda()

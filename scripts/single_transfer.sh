@@ -17,8 +17,8 @@ export CUDA_VISIBLE_DEVICES=2
 #     --color_transfer \
 
 python train_style.py --ip 0.0.0.0 \
-    -s /data3/lwj/preprocessed_data/llff/horns \
-    --model_path /data3/lwj/ckpt/3dgs/origin/llff/horns \
+    -s /data3/lwj/preprocessed_data/llff/flower \
+    --model_path /data3/lwj/ckpt/3dgs/origin/llff/flower \
     --style_image /home/lwj/data/TAT-GS/texture_refinement/test_img_list \
     --port 6012 \
     --color_transfer \
