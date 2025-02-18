@@ -121,6 +121,8 @@ class PreProcess:
         self.scene_masks = self.get_scene_masks(self.scene_weights)
         for i, view in enumerate(self.viewpoint_stack):
             view.scene_mask = self.scene_masks[i]
+            # 记录排序后的位置
+            view.id = i
             
         self.style_masks = self.get_style_masks(style_prompt)
         
@@ -136,9 +138,9 @@ class PreProcess:
             self.matches = override_matches
         
         # TODO: fixed
-        # if color_transfer:
-        #     self.gaussian_masks = self.get_gaussian_masks(self.scene_weights)
-        #     self.color_transfer(self.gaussian_masks)
+        if color_transfer:
+            self.gaussian_masks = self.get_gaussian_masks(self.scene_weights)
+            self.color_transfer(self.gaussian_masks)
         
         
         # self.original_style_image = self.style_image

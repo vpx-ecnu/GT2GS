@@ -22,8 +22,8 @@ def downsample_and_rotate(image_path, save_path):
     crop_op = torchvision.transforms.CenterCrop((W_crop, H_crop)) 
 
     for i in range(0, 16):
-        img_rotated = img_downsampled.rotate(22.5 * i, expand=True)
-        img_rotated = crop_op(img_rotated)
+        img_rotated = img_downsampled.rotate(22.5 * i, expand=False)
+        # img_rotated = crop_op(img_rotated)
         new_img = img_rotated.resize((640, 640), Image.Resampling.LANCZOS)
         # new_img = Image.new('RGB', (k * width, k * height))
         # for i in range(0, k*k):
