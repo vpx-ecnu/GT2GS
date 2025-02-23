@@ -3,7 +3,6 @@ import torch
 import numpy as np
 from gaussian_renderer import render
 
-from lang_sam import LangSAM
 from tqdm import tqdm
 from torchvision.transforms import ToPILImage
 import os
@@ -280,6 +279,8 @@ class PreProcess:
         os.makedirs(os.path.dirname(goal_path), exist_ok=True)
         
         if self.model is None:
+                
+            from lang_sam import LangSAM
             self.model = LangSAM()
 
         total_weights = []

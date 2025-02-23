@@ -197,16 +197,16 @@ def training(
         scene_mask = viewpoint_cam.scene_mask.cuda()
 
 
-        h, w = depth_image.shape
+        # h, w = depth_image.shape
         
-        if iteration == opt.densify_until_iter:
+        # if iteration == opt.densify_until_iter:
             
-            # gaussians.use_filter()
-            initial_opacity = gaussians._opacity.clone().detach()
-            initial_scaling = gaussians._scaling.clone().detach()
-            # gaussians._scaling.requires_grad_(False)
-            # gaussians._xyz.requires_grad_(False)
-            # gaussians._opacity.requires_grad_(False)
+        #     # gaussians.use_filter()
+        #     initial_opacity = gaussians._opacity.clone().detach()
+        #     initial_scaling = gaussians._scaling.clone().detach()
+        #     # gaussians._scaling.requires_grad_(False)
+        #     # gaussians._xyz.requires_grad_(False)
+        #     # gaussians._opacity.requires_grad_(False)
             
             
         if iteration == opt.style_until_iter:     
@@ -217,7 +217,7 @@ def training(
                     # pre.style_masks = pre.original_style_masks
                     viewpoint_stack = scene.getTrainCameras()
                     for i, view in enumerate(viewpoint_stack):
-                        pkg = render(view, gaussians, pipe, bg)                
+                        pkg = render(view, gaussians, pipe, bg)         
                         view.original_image = pkg["render"]
                     pre.gaussian_masks = pre.get_gaussian_masks(pre.scene_weights)
                     pre.color_transfer(pre.gaussian_masks)    
