@@ -1,3 +1,4 @@
+# style_config.py
 from dataclasses import dataclass
 from simple_parsing import ArgumentParser, field
 from simple_parsing.helpers import list_field
@@ -70,6 +71,7 @@ class StyleConfig:
     style_iter: int = 600
     
     style_image: str = None
+    style_image_size: int = 256
     
 class ConfigManager:
     
@@ -105,7 +107,9 @@ class ConfigManager:
     
     def _process_iteration(self):
         
-        self.opt.iterations = self.style.color_transfer_iter * 2 + self.style.style_iter
+        self.opt.iterations = (self.style.color_transfer_iter * 2 if self.style.color_transfer else 0)
+        self.opt.iterations += self.style.style_iter 
+        
         self.opt.densify_from_iter = 1
         self.opt.densify_until_iter = self.style.color_transfer_iter if self.style.color_transfer else 1
         

@@ -1,0 +1,90 @@
+# style_observer.py
+from style_phase import TrainingPhaseType
+from dataclasses import dataclass
+from typing import Dict, Optional
+from abc import ABC, abstractmethod
+from tqdm import tqdm
+import torch
+
+@dataclass
+class TrainingMetrics:
+    iteration: int
+    phase: TrainingPhaseType
+    losses: Dict[str, float]
+    timing: float
+    
+    
+class TrainingObserver(ABC):
+    
+    def on_iteration_start(self, iteration: int): ...
+    
+    def on_iteration_end(self, metrics: TrainingMetrics): ...
+    
+    def on_phase_changed(self, previous: TrainingPhaseType, current: TrainingPhaseType): ...
+    
+    def on_training_end(self): ...
+    
+
+class ProgressTracker(TrainingObserver):
+    
+    def __init__(self, trainer):
+        
+        self.bar_format = "{l_bar}{bar:50}{r_bar}"
+        self.trainer = trainer
+        self.global_pbar = tqdm(
+            total=trainer.config.opt.iterations, 
+            desc=f"{'Global Process':<16}",
+            bar_format=self.bar_format
+        )
+        self.phase_bars: Dict[TrainingPhaseType, tqdm] = {}
+        self.current_phase: Optional[TrainingPhaseType] = None
+        self.update_interval: int = 10
+
+    def on_phase_changed(self, previous: TrainingPhaseType, current: TrainingPhaseType):
+        if previous in self.phase_bars:
+            self.phase_bars[previous].close()
+        
+        if current not in self.phase_bars:
+            phase = self.trainer.phases[current]
+            self.phase_bars[current] = tqdm(
+                total=phase.end_iter - phase.start_iter + 1,
+                desc=f"{current.name.replace('_', ' ').title():<16}",
+                bar_format=self.bar_format
+            )
+
+    def on_iteration_end(self, metrics: TrainingMetrics):
+        
+        if metrics.iteration % self.update_interval != 0:
+            return 
+        
+        self.global_pbar.update(self.update_interval)
+        self.global_pbar.set_postfix(metrics.losses)
+        
+        if metrics.phase in self.phase_bars:
+            self.phase_bars[metrics.phase].update(self.update_interval)
+            self.phase_bars[metrics.phase].set_postfix(metrics.losses)
+            
+    def on_training_end(self):
+        
+        self.global_pbar.close()
+        for phase_bar in self.phase_bars.values():
+            phase_bar.close()
+            
+            
+class CheckpointSaver(TrainingObserver):
+    
+    def __init__(self, trainer):
+        self.trainer = trainer
+
+    def on_iteration_end(self, metrics: TrainingMetrics):
+        
+        if metrics.iteration in self.trainer.config.ckpt.checkpoint_iterations:                
+            print("\n[ITER {}] Saving Checkpoint".format(metrics.iteration))
+            torch.save(
+                (self.trainer.gaussians.capture(), metrics.iteration),
+                self.trainer.config.model.model_path + "/chkpnt" + str(metrics.iteration) + ".pth",
+            )
+            
+    def on_training_end(self):
+        print("\n[ITER {}] Saving Gaussians".format(self.trainer.config.opt.iterations))
+        self.trainer.scene.save(self.trainer.config.opt.iterations, self.trainer.config.model.model_path)
