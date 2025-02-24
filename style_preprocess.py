@@ -1,24 +1,9 @@
 # style_preprocess.py
 from dataclasses import dataclass 
 import torch 
-from typing import List, Optional, Tuple, Dict
 from gaussian_renderer import render
-from style_utils import read_and_resize_image, render_RGBcolor_images, render_depth_or_mask_images
+from style_utils import *
 import os
-
-@dataclass 
-class StyleContext:
-    
-    image_width: int = None
-    image_height: int = None
-    
-    original_images: Optional[torch.Tensor] = None
-    depth_images: Optional[torch.Tensor] = None
-    style_image: Optional[torch.Tensor] = None
-    # scene_mask: Optional[torch.Tensor] = None
-    # style_mask: Optional[torch.Tensor] = None
-
-    
         
 def _init_scene_images(trainer):
     

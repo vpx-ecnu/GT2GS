@@ -60,7 +60,7 @@ class CheckpointConfig:
 @dataclass
 class StyleConfig:
     
-    lambda_vgg_loss: float = 2
+    lambda_consistent_loss: float = 2
     lambda_prior_loss: float = 2
     lambda_content_loss: float = 0.005
     lambda_imgtv_loss: float = 0.02

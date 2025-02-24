@@ -233,13 +233,13 @@ def training(
             
             
             Ll1 = l1_loss(image, gt_image)
-            ssim_val = ssim(image, gt_image)
+            # ssim_val = ssim(image, gt_image)
             
-            print(Ll1, ssim_val, image.mean(), gt_image.mean(), viewpoint_cam.uid)
+            # print(Ll1, ssim_val, image.mean(), gt_image.mean(), viewpoint_cam.uid)
             
             loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
             loss.backward()
-            exit(0)
+            # exit(0)
             if iteration == opt.densify_until_iter - 1:
                 step = -1
                 viewpoint_stack = scene.getTrainCameras().copy()

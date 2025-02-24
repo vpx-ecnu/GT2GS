@@ -30,10 +30,6 @@ class StyleTrainer:
         
         for self.iteration in range(1, self.config.opt.iterations + 1):
             self._handle_gui()
-            
-            self.gaussians.update_learning_rate(self.iteration)
-            self.config.set_debug(True if self.iteration - 1 == self.config.app.debug_from else False)
-            
             self._train_iteration()
             
         for observer in self.observers:
@@ -50,6 +46,8 @@ class StyleTrainer:
         for observer in self.observers:
             observer.on_iteration_start(self.iteration)
         
+        self.gaussians.update_learning_rate(self.iteration)
+        self.config.set_debug(True if self.iteration - 1 == self.config.app.debug_from else False)
         losses, timing = phase.on_iteration(self.iteration)
         
         metrics = TrainingMetrics(
@@ -87,8 +85,6 @@ class StyleTrainer:
             self._load_checkpoint()
             
         self.gaussians.training_setup(self.config.opt)
-        
-        print(self.gaussians._features_dc.requires_grad)
         
         
     def _init_phases(self):
