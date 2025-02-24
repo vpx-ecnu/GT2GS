@@ -9,8 +9,7 @@ from gaussian_renderer import network_gui, render
 from style_observer import TrainingMetrics
 from style_phase import TrainingPhaseType, TrainingPhase, StylizationPhase, ColorTransferPhase
 from style_observer import TrainingObserver, ProgressTracker, CheckpointSaver
-from style_preprocess import StyleContext
-
+from style_preprocess import preprocess
 
 
 class StyleTrainer:
@@ -23,6 +22,7 @@ class StyleTrainer:
         
         self._init_components()
         self._init_phases()
+        preprocess(self)
         
     def train(self):
         
@@ -30,6 +30,10 @@ class StyleTrainer:
         
         for self.iteration in range(1, self.config.opt.iterations + 1):
             self._handle_gui()
+            
+            self.gaussians.update_learning_rate(self.iteration)
+            self.config.set_debug(True if self.iteration - 1 == self.config.app.debug_from else False)
+            
             self._train_iteration()
             
         for observer in self.observers:
@@ -83,6 +87,8 @@ class StyleTrainer:
             self._load_checkpoint()
             
         self.gaussians.training_setup(self.config.opt)
+        
+        print(self.gaussians._features_dc.requires_grad)
         
         
     def _init_phases(self):

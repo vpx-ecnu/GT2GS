@@ -8,7 +8,7 @@
 #
 # For inquiries contact  george.drettakis@inria.fr
 #
-
+import random
 import os
 import sys
 import cv2
@@ -33,6 +33,7 @@ from utils.style_utils import FASTLoss, NNFMLoss, KNNFMLoss, GRAMLoss, VGGLoss, 
 
 from preprocess import PreProcess, render_RGBcolor_images, render_depth_or_mask_images
 from utils.warp_pytorch import Warper
+from style_utils import concat_and_save_images
 
 def training(
     dataset,
@@ -96,15 +97,15 @@ def training(
                      pipe, bg, "cuda", method, 
                      erode, isolate, color_transfer)
     
-    if method == "nnfm":
-        loss_fn = NNFMLoss(pre, scene, None)
-    elif method == "knnfm":
-        loss_fn = KNNFMLoss(pre, None)
-    elif method == "fast":
-        # loss_fn = FASTLoss(pre, [1, 0])
-        loss_fn = FASTLoss(pre, None)
-    elif method == "gram":
-        loss_fn = GRAMLoss(pre, None)
+    # if method == "nnfm":
+    loss_fn = NNFMLoss(pre, scene, None)
+    # elif method == "knnfm":
+    #     loss_fn = KNNFMLoss(pre, None)
+    # elif method == "fast":
+    #     # loss_fn = FASTLoss(pre, [1, 0])
+    #     loss_fn = FASTLoss(pre, None)
+    # elif method == "gram":
+    #     loss_fn = GRAMLoss(pre, None)
     
     Loss1 = VGGLoss()
     Loss2 = PriorLoss()
@@ -187,14 +188,13 @@ def training(
             render_pkg["radii"],
         )
         
-        # print("??")
-        render_RGBcolor_images("./image.jpg", image)
-        render_depth_or_mask_images("./depth.jpg", depth)
 
         # Loss
         gt_image = viewpoint_cam.original_image.cuda()
         depth_image = viewpoint_cam.depth_image.cuda()
         scene_mask = viewpoint_cam.scene_mask.cuda()
+        # print("??")
+        concat_and_save_images("./image_old.jpg", gt_image, image, depth_image, depth)
 
 
         # h, w = depth_image.shape
@@ -229,9 +229,17 @@ def training(
             
             # gaussians._scaling.requires_grad_(True)
         elif iteration < opt.densify_until_iter or iteration > opt.style_until_iter:
+            
+            
+            
             Ll1 = l1_loss(image, gt_image)
+            ssim_val = ssim(image, gt_image)
+            
+            print(Ll1, ssim_val, image.mean(), gt_image.mean(), viewpoint_cam.uid)
+            
             loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
             loss.backward()
+            exit(0)
             if iteration == opt.densify_until_iter - 1:
                 step = -1
                 viewpoint_stack = scene.getTrainCameras().copy()
@@ -449,6 +457,11 @@ if __name__ == "__main__":
     parser.add_argument("--style_hyper", type=float, default=2)
     parser.add_argument("--content_hyper", type=float, default=0.005)
 
+
+    seed = 42
+    random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
     
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)

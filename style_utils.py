@@ -12,20 +12,20 @@ class CUDATimer:
         self._active = False
 
     def __enter__(self):
-        if self._active:
-            raise RuntimeError("Timer is already running")
+        # if self._active:
+        #     raise RuntimeError("Timer is already running")
             
         self.start_event.record()
-        self._active = True
+        # self._active = True
         return self
 
     def __exit__(self, *exc):
-        if not self._active:
-            return
+        # if not self._active:
+            # return
             
         self.end_event.record()
-        self._active = False
-        torch.cuda.current_stream().synchronize()
+        # self._active = False
+        # torch.cuda.current_stream().synchronize()
 
     @property
     def elapsed_ms(self) -> float:
@@ -34,16 +34,8 @@ class CUDATimer:
 
     
 def color_transfer(ctx):
-    original_size = ctx.original_images.size()
-    original_pixels = ctx.original_images.reshape(-1, 3)
-    style_pixels = ctx.style_image.reshape(-1, 3)
     
-    color_transfered_pixels, color_tf = match_colors(original_pixels, style_pixels)
-    ctx.original_images = color_transfered_pixels.reshape(*original_size)
-        
-        
     def match_colors(scene_images, style_image):
-        
         sh = scene_images.shape
         image_set = scene_images.view(-1, 3)
         style_img = style_image.view(-1, 3).to(image_set.device)
@@ -74,6 +66,18 @@ def color_transfer(ctx):
         color_tf[:3, 3:4] = tmp_vec.T
         return image_set, color_tf
     
+    original_pixels = ctx.original_images.permute(0, 2, 3, 1)
+    original_size = original_pixels.size()
+    original_pixels = original_pixels.reshape(-1, 3)
+    
+    style_pixels = ctx.style_image.permute(1, 2, 0)
+    
+    color_transfered_pixels, color_tf = match_colors(original_pixels, style_pixels)
+    
+    ctx.original_images = color_transfered_pixels.reshape(*original_size)
+    ctx.original_images = ctx.original_images.permute(0, 3, 1, 2)
+    
+    
     
 def render_depth_or_mask_images(path, image):
     
@@ -89,6 +93,39 @@ def render_RGBcolor_images(path, image):
     image = cv2.cvtColor((image * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
     cv2.imwrite(path, image)
 
+def convert_RGBcolor_images(image):
+    """convert RGB color image and return it as a NumPy array."""
+    image = image.detach().permute(1, 2, 0).clamp(min=0.0, max=1.0).cpu().numpy()
+    image = (image * 255).astype(np.uint8)
+    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    return image
+
+def convert_depth_or_mask_images(image):
+    """convert depth or mask image and return it as a NumPy array."""
+    image = image.detach().cpu().numpy().squeeze()
+    depth_map_normalized = cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX)
+    depth_map_normalized = np.uint8(depth_map_normalized)
+    depth_map_rgb = np.stack([depth_map_normalized] * 3, axis=-1)
+    return depth_map_rgb
+
+def concat_and_save_images(output_path, *images, direction='horizontal'):
+    
+    images_np = [img if isinstance(img, np.ndarray) 
+                     else convert_RGBcolor_images(img) 
+                              if img.shape[0] == 3 
+                              else convert_depth_or_mask_images(img) 
+                          for img in images]
+
+    if direction == 'horizontal':
+        max_height = max(img.shape[0] for img in images_np)
+        concatenated_image = np.hstack([cv2.copyMakeBorder(img, 0, max(max_height - img.shape[0], 0), 0, 0, cv2.BORDER_CONSTANT) for img in images_np])
+    elif direction == 'vertical':
+        max_width = max(img.shape[1] for img in images_np)
+        concatenated_image = np.vstack([cv2.copyMakeBorder(img, 0, 0, 0, max(max_width - img.shape[1], 0), cv2.BORDER_CONSTANT) for img in images_np])
+    else:
+        raise ValueError("Direction must be either 'horizontal' or 'vertical'.")
+
+    cv2.imwrite(output_path, concatenated_image)
 
 def read_and_resize_image(image_path, target_height):
     image = cv2.imread(image_path)
@@ -100,7 +137,20 @@ def read_and_resize_image(image_path, target_height):
     resized_image = cv2.resize(image_rgb, (target_width, target_height), interpolation=cv2.INTER_AREA)
     resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float() / 255.0
     return resized_image
+
+
+def render_ctx(ctx, path="./debug"):
     
+    depth_path = os.path.join(path, "depth/")
+    original_path = os.path.join(path, "original/")
+    os.makedirs(depth_path, exist_ok=True)
+    os.makedirs(original_path, exist_ok=True)
+    
+    for i in range(ctx.original_images.shape[0]):
+        render_RGBcolor_images(os.path.join(original_path, f"{int(i):04d}.png"), ctx.original_images[0])
+    for i in range(ctx.depth_images.shape[0]):
+        render_depth_or_mask_images(os.path.join(depth_path, f"{int(i):04d}.png"), ctx.depth_images[0])
+
 
 def render_viewpoint(self, if_depth, if_mask, if_original, if_render, path="./debug"):
     

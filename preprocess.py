@@ -437,7 +437,6 @@ class PreProcess:
             #     style_pixels.append(style_image[:, :, :].permute(1, 2, 0))
             style_pixels.append(self.style_image_list[0][:, :, :].permute(1, 2, 0))
             style_pixels = torch.cat(style_pixels, dim=0)
-            
             image_pixels = origin_images[self.scene_masks == i, :]
             
             image_set, color_tf = self.match_colors(image_pixels, style_pixels)
