@@ -99,7 +99,7 @@ class ConfigManager:
     
     def _generate_output_path(self):
         if self.model.model_path is not None:
-            return self.model.model_path
+            return
         
         scene = os.path.basename(os.path.basename(self.model.source_path.rstrip("/")))
         style = os.path.splitext(os.path.basename(self.style.style_image))[0]
@@ -115,8 +115,6 @@ class ConfigManager:
         
         self.opt.style_from_iter = 1 + (self.style.color_transfer_iter if self.style.color_transfer else 0)
         self.opt.style_until_iter = self.opt.style_from_iter + self.style.style_iter - 1
-        
-        self.ckpt.save_iterations.append(self.opt.iterations)
 
     def _save_args(self):
         

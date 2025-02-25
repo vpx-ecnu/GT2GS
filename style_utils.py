@@ -23,15 +23,15 @@ class StyleContext:
     image_width: int = None
     image_height: int = None
     
-    original_images: Optional[torch.Tensor] = None
-    style_image: Optional[torch.Tensor] = None
-    depth_images: Optional[torch.Tensor] = None
+    original_images: Optional[torch.Tensor] = None  # [N, C, H, W]
+    style_image: Optional[torch.Tensor] = None  # [C, H, W]
+    depth_images: Optional[torch.Tensor] = None # [N, C, H, W]
     
-    original_feats: Optional[torch.Tensor] = None    
-    style_feats: Optional[torch.Tensor] = None 
+    original_feats: Optional[torch.Tensor] = None # [N, C_feature, H//4, W//4]
+    style_feats: Optional[torch.Tensor] = None
     style_matrix: Optional[torch.Tensor] = None
     
-    project: Dict[Tuple, ProjectContext] = None
+    # project: Dict[Tuple, ProjectContext] = None
     # scene_mask: Optional[torch.Tensor] = None
     # style_mask: Optional[torch.Tensor] = None
 

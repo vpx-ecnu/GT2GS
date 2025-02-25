@@ -111,7 +111,7 @@ class StylizationPhase(TrainingPhase):
         self.feat_extractor = FeatureExtractor()
         self.target_feats = {}
         self.target_matrixs = {}
-        self.projection = {}
+        # self.projection = {}
         self.warper = Warper()
         
         self._init_original_feats()

@@ -84,7 +84,13 @@ class CheckpointSaver(TrainingObserver):
                 (self.trainer.gaussians.capture(), metrics.iteration),
                 self.trainer.config.model.model_path + "/chkpnt" + str(metrics.iteration) + ".pth",
             )
-            
-    def on_training_end(self):
-        print("\n[ITER {}] Saving Gaussians".format(self.trainer.config.opt.iterations))
+        
+        if metrics.iteration in self.trainer.config.ckpt.save_iterations:
+            self._save_gaussians(metrics.iteration)
+    
+    def _save_gaussians(self, iteration):
+        print("\n[ITER {}] Saving Gaussians".format(iteration))
         self.trainer.scene.save(self.trainer.config.opt.iterations, self.trainer.config.model.model_path)
+        
+    def on_training_end(self):
+        self._save_gaussians(self.trainer.config.opt.iterations)
