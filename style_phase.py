@@ -58,7 +58,6 @@ class ColorTransferPhase(TrainingPhase):
             
             # render_depth = self.render_pkg["depth"]
             # original_depth = self.trainer.ctx.depth_images[viewpoint_cam.uid]
-            
             # concat_and_save_images("./image.jpg", original_image, render_image, original_depth, render_depth)
 
             
@@ -76,7 +75,7 @@ class ColorTransferPhase(TrainingPhase):
             
         self._densification(iteration)
         return {
-            "Points": f"{self.trainer.gaussian._opacity.shape[0]}",
+            "Points": f"{self.trainer.gaussians._opacity.shape[0]}",
             "Loss": f"{loss.item():.{7}f}"
         }, timer.elapsed_ms
     
@@ -117,7 +116,7 @@ class StylizationPhase(TrainingPhase):
         
         self._init_original_feats()
         self._init_style_feat()
-        self._init_projection()
+        # self._init_projection()
     
     
     def _init_original_feats(self):
@@ -152,6 +151,7 @@ class StylizationPhase(TrainingPhase):
             # extract vgg feature
             # self.style_feats.append(self.get_feats(style_image.unsqueeze(0)))
             img_feats = self.feat_extractor.get_features(new_image, False)
+            # print(img_feats.shape)
             c, h, w = img_feats.shape
             img_feats = img_feats.view(c, -1)
             _, num_clusters = img_feats.shape
@@ -193,6 +193,9 @@ class StylizationPhase(TrainingPhase):
         self.style_feat = torch.cat(self.style_feat, dim=1)
         self.style_matrix = torch.cat(self.style_matrix, dim=1)
         
+        # print(self.style_feat.mean(), self.style_matrix.mean())
+        # exit(0)
+        
         
     def _update_target(self, id, feat, matrix):
         self.target_feats[id] = feat
@@ -207,7 +210,7 @@ class StylizationPhase(TrainingPhase):
             self.render_pkg = self.trainer.get_render_pkgs(curr_cam)
             render_image = self.render_pkg["render"]
             curr_image = self.trainer.ctx.original_images[curr_cam.uid]
-            self.render_feat = self.feat_extractor.get_features(render_image)
+            self.render_feat = self.feat_extractor.get_features(render_image).squeeze()
             
             
             render_depth = self.render_pkg["depth"]
@@ -219,8 +222,10 @@ class StylizationPhase(TrainingPhase):
                 # manual
                                 
                 # 造第一个视图的feature map用于调试
-                A, A_mat = self.style_feat[0], self.style_matrix[0]
-                B, B_mat = self.style_feat[2], self.style_matrix[2] 
+                tmp_val = 4096
+                
+                A, A_mat = self.style_feat[:, :tmp_val], self.style_matrix[:, :tmp_val]
+                B, B_mat = self.style_feat[:, tmp_val*1:tmp_val*2], self.style_matrix[:, tmp_val*1:tmp_val*2]
                 
                 _, fc, fh, fw = self.original_feats.shape
                 C = torch.zeros(fc, fh, fw).to("cuda")
@@ -242,13 +247,16 @@ class StylizationPhase(TrainingPhase):
                 # upper_half = A_expanded[:, :h//2, :, :]
                 # lower_half = B_expanded[:, h//2:, :, :]
                 # C = torch.cat((upper_half, lower_half), dim=1)
-                self.target_feats[0] = C
-                self.target_matrixs[0] = C_mat
+                target_feat = C
+                target_matrix = C_mat
+                
+                # print(self.target_feats[0].mean(), self.target_matrixs[0].mean())
+                # exit(0)
                 ################################################
                 
                 # nnfm
                 # target_feat, target_matrix = nnfm_feat_replace(self.render_feat, self.style_feat, self.style_matrix)
-                # consistent_loss = 0
+                consistent_loss = 0
                 
             else:
             
@@ -260,7 +268,9 @@ class StylizationPhase(TrainingPhase):
                 transformation2 = torch.from_numpy(last_cam.transformation).unsqueeze(0)
                 
                 warped_frame2, mask2, pos_pre = self.warper.forward_warp(
-                    curr_image, None, curr_depth, transformation1, transformation2, K, None
+                    curr_image.unsqueeze(0), None,
+                    curr_depth.unsqueeze(0).unsqueeze(0), 
+                    transformation1, transformation2, K, None
                 )
                 # mask2: [1, 1, h, w]
                 warped_frame2 = warped_frame2.squeeze(0)
@@ -270,11 +280,10 @@ class StylizationPhase(TrainingPhase):
                 threshold = 0.3
                 # 生成 mask：如果颜色差异小于阈值，mask 为 1，否则为 0
                 trans_mask = (diff < threshold).float()
-                trans_image = trans_mask * trans_image + (1 - trans_mask) * curr_image
+                trans_image = trans_mask * warped_frame2 + (1 - trans_mask) * curr_image
                 
                 trans_feat = self.feat_extractor.get_features(trans_image)
                 consistent_loss = cos_distance(self.target_feats[last_cam.uid], trans_feat)
-                
                 ############################
                 
                 # 读入先验数据
@@ -282,7 +291,7 @@ class StylizationPhase(TrainingPhase):
                 prior_target = self.target_feats[last_cam.uid]
                 prior_matrix = self.target_matrixs[last_cam.uid]
                 
-                h,w = trans_feat.shape
+                h, w = trans_mask.shape
                 rows = torch.arange(h, device=prior_target.device)  # (h,)
                 cols = torch.arange(w, device=prior_target.device)  # (w,)
                 grid_i, grid_j = torch.meshgrid(rows, cols, indexing="ij")
@@ -304,14 +313,14 @@ class StylizationPhase(TrainingPhase):
                 cols = prior_idx[:, :, 1]
                 prior_mask = trans_mask[rows, cols]
                 
+                
                 prior_idx = (pos_pre[img_h, img_w] - 4.0) / 8.0
                 # 转换成
                 grid = prior_idx.unsqueeze(0)
                 
-                prior_feats = result = F.grid_sample(prior_target.unsqueeze(0), grid, mode='bilinear', align_corners=False)
+                prior_feats = F.grid_sample(prior_target.unsqueeze(0), grid, mode='bilinear', align_corners=False)
                 prior_feats = prior_feats.squeeze()
                 # mask_feats = mask[]
-                
                 
                 # 计算新的target_feats
                 # 其实就是找一个index, 这个index的特征和原图，先验特征和先验矩阵的总相似情况的argmin
@@ -324,18 +333,25 @@ class StylizationPhase(TrainingPhase):
                         prior_mask, prior_feats, prior_matrix
                     )
             
+                # print("111:", target_feat.mean(), target_matrix.mean())
+                # exit(0)
             
             
                 # trans_mask = self.trans_mask[(last_cam.uid, curr_cam.uid)]
                 # trans_depth = self.trans_depth[(last_cam.uid, curr_cam.uid)]
                 # trans_pos = self.trans_pos[(last_cam.uid, curr_cam.uid)]
                 
-                
+            
                 
             self._update_target(curr_cam.uid, target_feat, target_matrix)
             prior_loss = cos_distance(target_feat, self.render_feat)
             content_loss = torch.mean((self.render_feat - self.original_feats[curr_cam.uid]) ** 2) 
+            # print(prior_loss, content_loss)
+            # # exit(0)
             imgtv_loss = get_imgtv_loss(render_image)
+            
+            concat_and_save_images("./image.jpg", curr_image, render_image, curr_depth, render_depth)
+
             
             
             loss = (
@@ -353,7 +369,7 @@ class StylizationPhase(TrainingPhase):
         self._densification(iteration)
         
         return {
-            "Points": f"{self.trainer.gaussian._opacity.shape[0]}",
+            "Points": f"{self.trainer.gaussians._opacity.shape[0]}",
             "Loss": f"{loss.item():.{7}f}"
         }, timer.elapsed_ms
 

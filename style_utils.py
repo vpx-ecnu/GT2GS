@@ -42,20 +42,20 @@ class CUDATimer:
         self._active = False
 
     def __enter__(self):
-        # if self._active:
-        #     raise RuntimeError("Timer is already running")
+        if self._active:
+            raise RuntimeError("Timer is already running")
             
         self.start_event.record()
-        # self._active = True
+        self._active = True
         return self
 
     def __exit__(self, *exc):
-        # if not self._active:
-            # return
+        if not self._active:
+            return
             
         self.end_event.record()
-        # self._active = False
-        # torch.cuda.current_stream().synchronize()
+        self._active = False
+        torch.cuda.current_stream().synchronize()
 
     @property
     def elapsed_ms(self) -> float:
@@ -278,7 +278,29 @@ def generate_transformation_matrix(angle, shear_x, shear_y, image_width, image_h
     
     return final_matrix, combined_matrix
 
-def tensor_img_transformation(self, tensor_image, transformation_matrix, idx):
+    
+def center_crop(image, crop_size):
+    """
+    对图像执行中心裁剪。
+    
+    @param image: 输入图像 (NumPy array)。
+    @param crop_size: 裁剪尺寸 (width, height)。
+    @return: 裁剪后的图像 (NumPy array)。
+    """
+    # 获取图像尺寸
+    h, w = image.shape[:2]
+    
+    # 计算裁剪起始点
+    start_x = w//2 - crop_size[0]//2
+    start_y = h//2 - crop_size[1]//2
+    
+    # 执行裁剪
+    cropped_image = image[start_y:start_y + crop_size[1], start_x:start_x + crop_size[0]]
+    
+    cropped_image = cv2.resize(cropped_image, (256, 256), interpolation=cv2.INTER_LANCZOS4)
+    return cropped_image
+    
+def tensor_img_transformation(tensor_image, transformation_matrix, idx):
     # Convert tensor to NumPy array (H, W, C)
     image_numpy = tensor_image.permute(1, 2, 0).cpu().numpy()
     
@@ -288,7 +310,7 @@ def tensor_img_transformation(self, tensor_image, transformation_matrix, idx):
     # Apply the affine transformation using the top 2x3 part of the transformation matrix
     affine_matrix = transformation_matrix[:2, :]
     transformed_image = cv2.warpAffine(image_numpy, affine_matrix, (cols, rows), flags=cv2.INTER_LANCZOS4)
-    transformed_image = self.center_crop(transformed_image, (int(cols / 1.3), int(rows / 1.3)))
+    transformed_image = center_crop(transformed_image, (int(cols / 1.3), int(rows / 1.3)))
     
     # Convert back to Tensor and normalize
     transformed_tensor = torch.from_numpy(transformed_image).permute(2, 0, 1).float().to(tensor_image.device)

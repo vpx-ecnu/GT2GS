@@ -1,1 +1,0 @@
-python train.py -s data/$1 --ip 0.0.0.0 --port 6009 --model_path output/$2
