@@ -465,20 +465,22 @@ class GeometryProtecttPhase(TrainingPhase):
             
             self.render_pkg = self.trainer.get_render_pkgs(viewpoint_cam)
             render_image = self.render_pkg["render"]
-            original_image = self.trainer.ctx.original_images[viewpoint_cam.uid]
+            curr_image = self.trainer.ctx.original_images[viewpoint_cam.uid]
+            render_depth = self.render_pkg["depth"]
+            curr_depth = self.trainer.ctx.depth_images[curr_image.uid]
+            
+            depth_loss = torch.mean((render_depth - curr_depth) ** 2)
             
             # render_depth = self.render_pkg["depth"]
             # original_depth = self.trainer.ctx.depth_images[viewpoint_cam.uid]
             # concat_and_save_images("./image.jpg", original_image, render_image, original_depth, render_depth)
 
             # TODO：1.depth loss 2.content loss?
-            Ll1 = l1_loss(render_image, original_image)
-            ssim_val = ssim(render_image, original_image)
             
             loss = (
-                (1.0 - self.trainer.config.opt.lambda_dssim) * Ll1 + 
-                self.trainer.config.opt.lambda_dssim * (1.0 - ssim_val)
+                self.trainer.config.style.lambda_depth_loss * depth_loss 
             )
+            
             
             loss.backward()
             self.trainer.gaussians.optimizer.step()
