@@ -24,7 +24,7 @@ def create_nx_n_image(image, n):
 # 示例
 if __name__ == "__main__":
     # 读取图像
-    image_path = "/home/lwj/data/TAT-GS/texture_refinement/test_img_list/banded_0009.jpg"
+    image_path = "/home/lwj/data/ARF-svox2/data/styles/143.jpg"
     image = cv2.imread(image_path)
 
     # 设置拼接的网格大小，4x4为例
@@ -35,7 +35,7 @@ if __name__ == "__main__":
     
     base_name = os.path.basename(image_path)
     file_name_without_ext, ext = os.path.splitext(base_name)
-    save_path = f"/home/lwj/data/TAT-GS/texture_refinement/test_img_list/{file_name_without_ext}_{n}x{n}{ext}"
+    save_path = f"/home/lwj/data/ICCV/TAT-GS/texture_refinement/{file_name_without_ext}_{n}x{n}{ext}"
 
     # 保存或显示结果
     cv2.imwrite(save_path, result_image)

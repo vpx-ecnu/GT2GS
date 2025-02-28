@@ -60,6 +60,8 @@ class CheckpointConfig:
 @dataclass
 class StyleConfig:
     
+    name: str = "deafult"
+    prior: bool = field(False, action="store_true")
     lambda_consistent_loss: float = 2
     lambda_prior_loss: float = 2
     lambda_content_loss: float = 0.005

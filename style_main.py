@@ -6,6 +6,9 @@ from gaussian_renderer import network_gui
 from style_trainer import StyleTrainer
 import random
 import numpy as np
+import wandb
+from datetime import datetime
+
 def main():
     
     seed = 42
@@ -13,8 +16,14 @@ def main():
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     
-    config = parse_args()   
+    config = parse_args()  
      
+    wandb.init(
+        project="Texture-GS",
+        name = config.style.name,
+        config=config,
+        group=datetime.now().strftime("%Y-%m-%d-%H")
+    )
     safe_state(config.app.quiet)
     network_gui.init(config.app.ip, config.app.port)
     torch.autograd.set_detect_anomaly(config.app.detect_anomaly)

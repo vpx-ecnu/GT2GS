@@ -54,7 +54,7 @@ class FeatureExtractor(torch.nn.Module):
         return torch.cat(outputs, dim=1).squeeze()
     
     
-def nnfm_argmin_cos_distance(self, a, b, center=False):
+def nnfm_argmin_cos_distance(a, b, center=False):
     """
     a: [b, c, hw],
     b: [b, c, h2w2]
@@ -86,12 +86,12 @@ def nnfm_argmin_cos_distance(self, a, b, center=False):
 
     return torch.cat(z_best, dim=0)
 
-def nnfm_feat_replace(self, A, B, Mat):
+def nnfm_feat_replace(A, B, Mat):
     c, h, w = A.shape
     A_flat = A.reshape(c, -1)
     B_flat = B.reshape(c, -1)
     # indices:[h*w]
-    indices = self.nnfm_argmin_cos_distance(A_flat, B_flat)
+    indices = nnfm_argmin_cos_distance(A_flat, B_flat)
     C_flat = B[:, indices]
     C_matrix = Mat[:, indices]
     return C_flat.reshape(c, h, w), C_matrix.reshape(1, h, w)

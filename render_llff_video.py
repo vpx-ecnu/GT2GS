@@ -41,7 +41,8 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
             R, T = train_cam.R, train_cam.T
             w2c = np.eye(4)
             w2c[:3,:3] = R
-            w2c[:3,3] = T
+            # TODO：维度压缩
+            w2c[:3,3] = T.squeeze()
             c2w = np.linalg.inv(w2c)
             cur_c2ws_all.append(c2w)
         cur_c2ws_all = np.stack(cur_c2ws_all)
