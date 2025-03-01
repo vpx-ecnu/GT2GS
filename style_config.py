@@ -124,8 +124,11 @@ class ConfigManager:
         print(f"Stylized Gaussian model output path: {self.model.model_path}")
         
         os.makedirs(self.model.model_path, exist_ok=True)
+        
+        model_vars = vars(self.model)
+        model_vars['original_model_path'] = None
         with open(os.path.join(self.model.model_path, "cfg_args"), "w") as cfg_log_f:
-            cfg_log_f.write(str(Namespace(**vars(self.model))))
+            cfg_log_f.write(str(Namespace(**model_vars)))
     
     
 def parse_args():
