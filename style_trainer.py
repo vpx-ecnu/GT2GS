@@ -86,13 +86,14 @@ class StyleTrainer:
             
         self.gaussians.training_setup(self.config.opt)
         
-        
+    # TODO: 加上交替步骤    
     def _init_phases(self):
         
         self.phases: Dict[TrainingPhaseType, TrainingPhase] = {
             TrainingPhaseType.STYLIZATION: 
                 StylizationPhase(self, self.config.opt.style_from_iter, 
                                        self.config.opt.style_until_iter),
+                
         }
         
         if self.config.style.color_transfer:

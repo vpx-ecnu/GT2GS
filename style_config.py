@@ -60,6 +60,8 @@ class CheckpointConfig:
 @dataclass
 class StyleConfig:
     
+    name: str = "deafult"
+    prior: bool = field(False, action="store_true")
     lambda_consistent_loss: float = 2
     lambda_prior_loss: float = 2
     lambda_content_loss: float = 0.005
@@ -105,6 +107,7 @@ class ConfigManager:
         style = os.path.splitext(os.path.basename(self.style.style_image))[0]
         self.model.model_path = f"output/style/{scene}/{style}/"
     
+    # TODO: 需要能够交替的优雅实现
     def _process_iteration(self):
         
         self.opt.iterations = (self.style.color_transfer_iter * 2 if self.style.color_transfer else 0)

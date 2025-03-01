@@ -4,5 +4,6 @@ python style_main.py --ip 0.0.0.0 \
     --style_image /home/lwj/data/ARF-svox2/data/styles/$2 \
     --port 6012 \
     --color_transfer \
+    --name $3 \
 
 # 143.jpg
