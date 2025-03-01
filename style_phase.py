@@ -9,20 +9,17 @@ from style_utils import *
 from utils.loss_utils import l1_loss, ssim
 from style_loss import *
 import wandb
-
-class TrainingPhaseType(Enum):
-    COLOR_TRANSFER_1 = auto()
-    STYLIZATION = auto()
-    COLOR_TRANSFER_2 = auto()
     
 
 class TrainingPhase(ABC):
-    def __init__(self, trainer, start_iter, end_iter):
+    def __init__(self, trainer, uid, name, start_iter, end_iter):
         self.trainer = trainer
         self.config = trainer.config
         self.start_iter = start_iter
         self.end_iter = end_iter
         self.viewpoint_stack = None
+        self.name = name
+        self.uid = uid
 
     def on_phase_start(self): ...
 
@@ -36,15 +33,6 @@ class TrainingPhase(ABC):
 
 
 class ColorTransferPhase(TrainingPhase):
-    
-    @torch.no_grad
-    def on_phase_start(self):
-        
-        if self.config.style.color_transfer:
-            color_transfer(self.trainer.ctx)
-
-        # render_ctx(self.trainer.ctx)
-        # exit(0)
 
     def on_iteration(self, iteration: int) -> Dict[str, torch.Tensor]:
         
@@ -84,7 +72,7 @@ class ColorTransferPhase(TrainingPhase):
         }, timer.elapsed_ms
     
     def _get_viewpoint_cam(self):
-        if not self.viewpoint_stack:
+        if not self.viewpoint_stack or len(self.viewpoint_stack) == 0:
             self.viewpoint_stack = self.trainer.scene.getTrainCameras().copy()
         return self.viewpoint_stack.pop(randint(0, len(self.viewpoint_stack) - 1))
 
@@ -101,53 +89,40 @@ class ColorTransferPhase(TrainingPhase):
         gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
         gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
-        if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
+        if iteration % opt.densification_interval == 0:
             size_threshold = 20 if iteration > opt.opacity_reset_interval else None
             gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
         
-        if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
+        if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == self.start_iter):
             gaussians.reset_opacity()
+            
+class ColorTransferPhaseOne(ColorTransferPhase):
 
-class StylizationPhase(TrainingPhase):
     
     @torch.no_grad
     def on_phase_start(self):
-        self.feat_extractor = FeatureExtractor()
-        # self.target_feats = {}
-        # self.target_matrixs = {}
-        # self.projection = {}
-        self.warper = Warper()
-        self.prior_target = None
-        self.prior_matrix = None
-        self._init_original_feats()
-        self._init_style_feat()
-        # self._init_projection()
-    
+        if self.config.style.color_transfer:
+            color_transfer(self.trainer.ctx)
+            
     @torch.no_grad
     def on_phase_end(self):
-        # pass
-        self.viewpoint_stack = self.trainer.scene.getTrainCameras()
-        self.viewpoint_len = len(self.viewpoint_stack)
-        for i in range(0, self.viewpoint_len):
-            curr_cam = self.viewpoint_stack[i]
-            self.render_pkg = self.trainer.get_render_pkgs(curr_cam)
-            render_img = self.render_pkg["render"]
-            self.trainer.ctx.original_images[curr_cam.uid] = render_img
-            
-    
+        self.trainer.warper = Warper()
+        self.trainer.feat_extractor = FeatureExtractor()
+        self._init_original_feats()
+        self._init_style_feat()
+ 
     def _init_original_feats(self):
-        self.original_feats = []
+        self.trainer.ctx.original_feats = []
         
         for i, original_image in enumerate(self.trainer.ctx.original_images):
-            self.original_feats.append(self.feat_extractor.get_features(original_image))
+            self.trainer.ctx.original_feats.append(self.trainer.feat_extractor.get_features(original_image))
     
-        self.original_feats = torch.stack(self.original_feats)
-        
+        self.trainer.ctx.original_feats = torch.stack(self.trainer.ctx.original_feats)
     
     def _init_style_feat(self):
         
-        self.style_feat = []
-        self.style_matrix = []
+        self.trainer.ctx.style_feat = []
+        self.trainer.ctx.style_matrix = []
         
         style_image = self.trainer.ctx.style_image
         _, style_img_width, style_img_height = style_image.shape
@@ -156,11 +131,11 @@ class StylizationPhase(TrainingPhase):
         # 1. 考虑用clip替换聚类的pipeline
         # 2. 对齐ref-npr的setting，可以有一个完全先验的特征图
         # 3. ref-npr做实验，验证没有rgb loss，只有特征图loss情况下的结果
-        for i in range(0, 36):
+        for i in range(0, 4):
             # 先假设错切参数为0，旋转角度由i得到
             Hx = Hy = 0
             # TODO: 要保证是float格式
-            theta = i * 10.0
+            theta = i * 90.0
             
             # 获得线性变换矩阵（包括旋转角度和错切参数）
             M, M_parameter = generate_transformation_matrix(theta, Hx, Hy, style_img_width, style_img_height)
@@ -171,18 +146,18 @@ class StylizationPhase(TrainingPhase):
             
             # extract vgg feature
             # self.style_feats.append(self.get_feats(style_image.unsqueeze(0)))
-            img_feats = self.feat_extractor.get_features(new_image, False)
+            img_feats = self.trainer.feat_extractor.get_features(new_image, False)
             # print(img_feats.shape)
             ######################################################################
             # 不聚类
-            # c, h, w = img_feats.shape
-            # img_feats = img_feats.view(c, -1)
-            # _, num_clusters = img_feats.shape
+            c, h, w = img_feats.shape
+            img_feats = img_feats.view(c, -1)
+            _, num_clusters = img_feats.shape
             
             ######################################################################
             # 聚类
             
-            # 处理为k-means可用形式
+            # # 处理为k-means可用形式
             # c, h, w = img_feats.shape
             # img_feats_flat = img_feats.permute(1, 2, 0).reshape(-1, c)
             # img_feats_np = img_feats_flat.cpu().numpy()
@@ -208,36 +183,67 @@ class StylizationPhase(TrainingPhase):
             ######################################################################
             # 裁剪
             # TODO: 后面可以手动控制变量范围
-            c, h, w = img_feats.shape
-            target_h = 8
-            target_w = 8
+            # c, h, w = img_feats.shape
+            # target_h = 8
+            # target_w = 8
             
-            start_h = (h - target_h) // 2
-            start_w = (w - target_w) // 2
+            # start_h = (h - target_h) // 2
+            # start_w = (w - target_w) // 2
             
-            cropped_tensor = img_feats[:, start_h:start_h + target_h, start_w:start_w + target_w]
-            # view必须张量在内存中连续，所以用reshape
-            img_feats = cropped_tensor.reshape(c, -1)
-            _, num_clusters = img_feats.shape
+            # cropped_tensor = img_feats[:, start_h:start_h + target_h, start_w:start_w + target_w]
+            # # view必须张量在内存中连续，所以用reshape
+            # img_feats = cropped_tensor.reshape(c, -1)
+            # _, num_clusters = img_feats.shape
             
             # 将新特征组加入总特征集合（当前未考虑深度分组）
             
-            self.style_feat.append(img_feats)
+            self.trainer.ctx.style_feat.append(img_feats)
             
             # M_tensor = torch.from_numpy(M_parameter)
             # 目前先只存了旋转角度，用于求loss，而不是
             M_tensor = torch.tensor(theta)
             matrix_list = torch.stack([M_tensor] * num_clusters).to("cuda").unsqueeze(0)
-            self.style_matrix.append(matrix_list)
+            self.trainer.ctx.style_matrix.append(matrix_list)
 
         
-        self.style_feat = torch.cat(self.style_feat, dim=1)
-        self.style_matrix = torch.cat(self.style_matrix, dim=1)
+        self.trainer.ctx.style_feat = torch.cat(self.trainer.ctx.style_feat, dim=1)
+        self.trainer.ctx.style_matrix = torch.cat(self.trainer.ctx.style_matrix, dim=1)
         
-        # print(self.style_feat.mean(), self.style_matrix.mean())
-        # exit(0)
+
+class ColorTransferPhaseTwo(ColorTransferPhase):
+    
+    @torch.no_grad
+    def on_phase_start(self):
+        # pass
+        self.viewpoint_stack = self.trainer.scene.getTrainCameras().copy()
+        self.viewpoint_len = len(self.viewpoint_stack)
+        for i in range(0, self.viewpoint_len):
+            curr_cam = self.viewpoint_stack[i]
+            self.render_pkg = self.trainer.get_render_pkgs(curr_cam)
+            render_img = self.render_pkg["render"]
+            self.trainer.ctx.original_images[curr_cam.uid] = render_img
+            
+        if self.config.style.color_transfer:
+            color_transfer(self.trainer.ctx)
         
         
+
+class StylizationPhase(TrainingPhase):
+    
+    @torch.no_grad
+    def on_phase_start(self):
+        # self.target_feats = {}
+        # self.target_matrixs = {}
+        # self.projection = {}
+        self.prior_target = None
+        self.prior_matrix = None
+        self.warper = self.trainer.warper
+        self.feat_extractor = self.trainer.feat_extractor
+        self.original_feats = self.trainer.ctx.original_feats
+        self.style_feat = self.trainer.ctx.style_feat
+        self.style_matrix = self.trainer.ctx.style_matrix
+        # self._init_projection()
+    
     def _update_target(self, id, feat, matrix):
         self.prior_target = feat
         self.prior_matrix = matrix
@@ -263,40 +269,40 @@ class StylizationPhase(TrainingPhase):
                 # manual
                                 
                 # # 造第一个视图的feature map用于调试
-                # tmp_val = 4096
+                tmp_val = 4096
                 
-                # A, A_mat = self.style_feat[:, :tmp_val], self.style_matrix[:, :tmp_val]
-                # B, B_mat = self.style_feat[:, tmp_val*1:tmp_val*2], self.style_matrix[:, tmp_val*1:tmp_val*2]
+                A, A_mat = self.style_feat[:, :tmp_val], self.style_matrix[:, :tmp_val]
+                B, B_mat = self.style_feat[:, tmp_val*1:tmp_val*2], self.style_matrix[:, tmp_val*1:tmp_val*2]
                 
-                # _, fc, fh, fw = self.original_feats.shape
-                # C = torch.zeros(fc, fh, fw).to("cuda")
-                # matc, _ = A_mat.shape
-                # C_mat = torch.zeros(matc, fh, fw).to("cuda")
-                # A_indices = torch.randint(0, 5, (fc, fh // 2, fw))
-                # for i in range(fc):
-                #     C[i, :fh // 2, :] = A[i, A_indices[i]]
-                # for i in range(matc):
-                #     C_mat[i, :fh // 2, :] = A_mat[i, A_indices[i]]
+                _, fc, fh, fw = self.original_feats.shape
+                C = torch.zeros(fc, fh, fw).to("cuda")
+                matc, _ = A_mat.shape
+                C_mat = torch.zeros(matc, fh, fw).to("cuda")
+                A_indices = torch.randint(0, 5, (fc, fh // 2, fw))
+                for i in range(fc):
+                    C[i, :fh // 2, :] = A[i, A_indices[i]]
+                for i in range(matc):
+                    C_mat[i, :fh // 2, :] = A_mat[i, A_indices[i]]
                     
-                # B_indices = torch.randint(0, 5, (fc, fh - fh // 2, fw))
-                # for i in range(fc):
-                #     C[i, fh // 2:, :] = B[i, B_indices[i]]
-                # for i in range(matc):
-                #     C_mat[i, fh // 2:, :] = B_mat[i, B_indices[i]]
-                # # A_expanded = setA.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, fh, fw)
-                # # B_expanded = setB.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, fh, fw)
-                # # upper_half = A_expanded[:, :h//2, :, :]
-                # # lower_half = B_expanded[:, h//2:, :, :]
-                # # C = torch.cat((upper_half, lower_half), dim=1)
-                # target_feat = C
-                # target_matrix = C_mat
+                B_indices = torch.randint(0, 5, (fc, fh - fh // 2, fw))
+                for i in range(fc):
+                    C[i, fh // 2:, :] = B[i, B_indices[i]]
+                for i in range(matc):
+                    C_mat[i, fh // 2:, :] = B_mat[i, B_indices[i]]
+                # A_expanded = setA.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, fh, fw)
+                # B_expanded = setB.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, fh, fw)
+                # upper_half = A_expanded[:, :h//2, :, :]
+                # lower_half = B_expanded[:, h//2:, :, :]
+                # C = torch.cat((upper_half, lower_half), dim=1)
+                target_feat = C
+                target_matrix = C_mat
                 
-                # print(self.target_feats[0].mean(), self.target_matrixs[0].mean())
-                # exit(0)
-                ################################################
+                # # print(self.target_feats[0].mean(), self.target_matrixs[0].mean())
+                # # exit(0)
+                # ################################################
                 
                 # nnfm
-                target_feat, target_matrix = nnfm_feat_replace(self.render_feat, self.style_feat, self.style_matrix)
+                # target_feat, target_matrix = nnfm_feat_replace(self.render_feat, self.style_feat, self.style_matrix)
                 consistent_loss = 0
                 
             else:
@@ -411,13 +417,14 @@ class StylizationPhase(TrainingPhase):
             self.trainer.gaussians.optimizer.step()
             self.trainer.gaussians.optimizer.zero_grad(set_to_none=True)
             
-            wandb.log({
-                "Loss": loss.item(),
-                "Prior Loss": prior_loss.item(),
-                "Content Loss": content_loss.item(),
-                "ImgTV Loss": imgtv_loss.item(),
-                "Depth Loss": depth_loss.item()
-            })
+            if self.trainer.config.app.need_log:
+                wandb.log({
+                    "Loss": loss.item(),
+                    "Prior Loss": prior_loss.item(),
+                    "Content Loss": content_loss.item(),
+                    "ImgTV Loss": imgtv_loss.item(),
+                    "Depth Loss": depth_loss.item()
+                })
             
         self._densification(iteration)
         
@@ -443,7 +450,7 @@ class StylizationPhase(TrainingPhase):
     def _densification(self, iteration: int):
         return
            
-class GeometryProtecttPhase(TrainingPhase):
+class GeometryProtectPhase(TrainingPhase):
     
     @torch.no_grad
     def on_phase_start(self):
@@ -467,7 +474,7 @@ class GeometryProtecttPhase(TrainingPhase):
             render_image = self.render_pkg["render"]
             curr_image = self.trainer.ctx.original_images[viewpoint_cam.uid]
             render_depth = self.render_pkg["depth"]
-            curr_depth = self.trainer.ctx.depth_images[curr_image.uid]
+            curr_depth = self.trainer.ctx.depth_images[viewpoint_cam.uid]
             
             depth_loss = torch.mean((render_depth - curr_depth) ** 2)
             
@@ -510,9 +517,9 @@ class GeometryProtecttPhase(TrainingPhase):
         gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
         gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
-        if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
+        if iteration % opt.densification_interval == 0:
             size_threshold = 20 if iteration > opt.opacity_reset_interval else None
             gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
         
-        if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
+        if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == self.start_iter):
             gaussians.reset_opacity()           

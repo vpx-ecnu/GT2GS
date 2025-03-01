@@ -17,13 +17,13 @@ def main():
     torch.cuda.manual_seed_all(seed)
     
     config = parse_args()  
-     
-    wandb.init(
-        project="Texture-GS",
-        name = config.style.name,
-        config=config,
-        group=datetime.now().strftime("%Y-%m-%d-%H")
-    )
+    if config.app.need_log:
+        wandb.init(
+            project="Texture-GS",
+            name = config.style.name,
+            config=config,
+            group=datetime.now().strftime("%Y-%m-%d-%H")
+        )
     safe_state(config.app.quiet)
     network_gui.init(config.app.ip, config.app.port)
     torch.autograd.set_detect_anomaly(config.app.detect_anomaly)

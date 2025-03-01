@@ -40,7 +40,6 @@ class OptimizationConfig:
     
     densify_grad_threshold: float = 0.0002
     random_background: bool = field(False, action="store_true")
-    
 
 @dataclass
 class ApplicationConfig:
@@ -50,6 +49,7 @@ class ApplicationConfig:
     debug_from: int = -1
     detect_anomaly: bool = field(False, action="store_true")
     quiet: bool = field(False, action="store_true")
+    need_log: bool = field(False, action="store_true")
     
 @dataclass
 class CheckpointConfig:
@@ -60,7 +60,7 @@ class CheckpointConfig:
 @dataclass
 class StyleConfig:
     
-    name: str = "deafult"
+    name: str = "default"
     prior: bool = field(False, action="store_true")
     lambda_consistent_loss: float = 2
     lambda_prior_loss: float = 2
@@ -70,7 +70,10 @@ class StyleConfig:
     
     color_transfer: bool = field(False, action="store_true")
     color_transfer_iter: int = 400
-    style_iter: int = 600
+    
+    rounds: int = 10
+    style_iter: int = 60
+    geometry_iter: int = 40
     
     style_image: str = None
     style_image_size: int = 256
@@ -93,7 +96,7 @@ class ConfigManager:
         self.ckpt = raw_config.ckpt
         
         self._generate_output_path()
-        self._process_iteration()
+        # self._process_iteration()
         self._save_args()
         
     def set_debug(self, val):
@@ -109,26 +112,26 @@ class ConfigManager:
     
     # TODO: 需要能够交替的优雅实现
     def _process_iteration(self):
+        pass
+        # self.opt.iterations = (self.style.color_transfer_iter * 2 if self.style.color_transfer else 0)
+        # self.opt.iterations += (self.style.style_iter + self.style.geometry_iter) * self.style.rounds
         
-        self.opt.iterations = (self.style.color_transfer_iter * 2 if self.style.color_transfer else 0)
-        self.opt.iterations += self.style.style_iter 
+        # self.opt.densify_from_iter = 1
+        # self.opt.densify_until_iter = self.style.color_transfer_iter if self.style.color_transfer else 1
         
-        self.opt.densify_from_iter = 1
-        self.opt.densify_until_iter = self.style.color_transfer_iter if self.style.color_transfer else 1
-        
-        self.opt.style_from_iter = 1 + (self.style.color_transfer_iter if self.style.color_transfer else 0)
-        self.opt.style_until_iter = self.opt.style_from_iter + self.style.style_iter - 1
+        # self.opt.style_from_iter = 1 + (self.style.color_transfer_iter if self.style.color_transfer else 0)
+        # self.opt.style_until_iter = self.opt.style_from_iter + self.style.style_iter - 1
 
     def _save_args(self):
         
-        from argparse import Namespace  # for compatibility
         print(f"Training on {self.model.source_path}")
         print(f"Original Gaussian model path: {self.model.original_model_path}")
         print(f"Stylized Gaussian model output path: {self.model.model_path}")
         
         os.makedirs(self.model.model_path, exist_ok=True)
         
-        model_vars = vars(self.model)
+        from argparse import Namespace  # for compatibility
+        model_vars = vars(self.model).copy()
         model_vars['original_model_path'] = None
         with open(os.path.join(self.model.model_path, "cfg_args"), "w") as cfg_log_f:
             cfg_log_f.write(str(Namespace(**model_vars)))

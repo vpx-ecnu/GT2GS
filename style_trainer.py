@@ -7,7 +7,7 @@ from style_utils import CUDATimer
 
 from gaussian_renderer import network_gui, render
 from style_observer import TrainingMetrics
-from style_phase import TrainingPhaseType, TrainingPhase, StylizationPhase, ColorTransferPhase
+from style_phase import StylizationPhase, ColorTransferPhaseOne, GeometryProtectPhase, ColorTransferPhaseTwo
 from style_observer import TrainingObserver, ProgressTracker, CheckpointSaver
 from style_preprocess import preprocess
 
@@ -18,7 +18,7 @@ class StyleTrainer:
         self.config = config
         self.device = config.model.data_device
         self.timer = CUDATimer()
-        self.cur_phase = None
+        self.cur_phase = -1
         
         self._init_components()
         self._init_phases()
@@ -28,7 +28,7 @@ class StyleTrainer:
         
         self._init_observers()
         
-        for self.iteration in range(1, self.config.opt.iterations + 1):
+        for self.iteration in range(1, self.total_iterations + 1):
             self._handle_gui()
             self._train_iteration()
             
@@ -86,25 +86,37 @@ class StyleTrainer:
             
         self.gaussians.training_setup(self.config.opt)
         
-    # TODO: 加上交替步骤    
+        
     def _init_phases(self):
         
-        self.phases: Dict[TrainingPhaseType, TrainingPhase] = {
-            TrainingPhaseType.STYLIZATION: 
-                StylizationPhase(self, self.config.opt.style_from_iter, 
-                                       self.config.opt.style_until_iter),
-                
-        }
+        phase_iter = 1
+        phase_uid = 0
+        self.phases = []
+        self.total_iterations = 0
+        
+        def _add_phase(phase, phase_name, num_iter):
+            self.total_iterations += num_iter
+            
+            nonlocal phase_iter, phase_uid
+            
+            begin_iter = phase_iter
+            end_iter = phase_iter + num_iter - 1
+            
+            self.phases.append(phase(self, phase_uid, phase_name, begin_iter, end_iter))
+            
+            phase_iter += num_iter
+            phase_uid += 1
+        
         
         if self.config.style.color_transfer:
-            self.phases.update({
-                TrainingPhaseType.COLOR_TRANSFER_1: 
-                    ColorTransferPhase(self, 1, 
-                                            self.config.opt.style_from_iter - 1),
-                TrainingPhaseType.COLOR_TRANSFER_2: 
-                    ColorTransferPhase(self, self.config.opt.style_until_iter + 1, 
-                                            self.config.opt.iterations)  
-            })
+            _add_phase(ColorTransferPhaseOne, "Pre Colortransfer", self.config.style.color_transfer_iter)
+            
+        for i in range(self.config.style.rounds):
+            _add_phase(StylizationPhase,     f"Stylization {i}", self.config.style.style_iter)
+            _add_phase(GeometryProtectPhase, f"Geometry    {i}", self.config.style.geometry_iter)
+        
+        if self.config.style.color_transfer:
+            _add_phase(ColorTransferPhaseTwo, "Aft Colortransfer", self.config.style.color_transfer_iter)
         
 
     def _init_observers(self):
@@ -115,12 +127,13 @@ class StyleTrainer:
         ]
         
         
-    def _get_train_phase(self) -> TrainingPhaseType:
-        
-        for phase_type, phase in self.phases.items():
-            if phase.start_iter <= self.iteration <= phase.end_iter:
-                return phase_type
-        raise ValueError(f"Iteration {self.iteration} out of phase range")
+    def _get_train_phase(self):
+        new_phase = self.cur_phase
+        if self.cur_phase == -1:
+            return 0
+        while self.iteration > self.phases[new_phase].end_iter:
+            new_phase += 1
+        return new_phase
         
     def _load_checkpoint(self):
         (model_params, self.first_iter) = torch.load(self.config.ckpt.start_checkpoint)
@@ -166,7 +179,7 @@ class StyleTrainer:
                     )
                 network_gui.send(net_image_bytes, self.config.model.source_path)
                 if do_training and (
-                    (self.iteration < int(self.config.opt.iterations)) or not keep_alive
+                    (self.iteration < int(self.total_iterations)) or not keep_alive
                 ):
                     break
             except Exception:

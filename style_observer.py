@@ -1,5 +1,4 @@
 # style_observer.py
-from style_phase import TrainingPhaseType
 from dataclasses import dataclass
 from typing import Dict, Optional
 from abc import ABC, abstractmethod
@@ -9,7 +8,7 @@ import torch
 @dataclass
 class TrainingMetrics:
     iteration: int
-    phase: TrainingPhaseType
+    phase: int
     losses: Dict[str, float]
     timing: float
     
@@ -20,7 +19,7 @@ class TrainingObserver(ABC):
     
     def on_iteration_end(self, metrics: TrainingMetrics): ...
     
-    def on_phase_changed(self, previous: TrainingPhaseType, current: TrainingPhaseType): ...
+    def on_phase_changed(self, previous: int, current: int): ...
     
     def on_training_end(self): ...
     
@@ -32,15 +31,15 @@ class ProgressTracker(TrainingObserver):
         self.bar_format = "{l_bar}{bar:50}{r_bar}"
         self.trainer = trainer
         self.global_pbar = tqdm(
-            total=trainer.config.opt.iterations, 
+            total=trainer.total_iterations, 
             desc=f"{'Global Process':<16}",
             bar_format=self.bar_format
         )
-        self.phase_bars: Dict[TrainingPhaseType, tqdm] = {}
-        self.current_phase: Optional[TrainingPhaseType] = None
+        self.phase_bars: Dict[int, tqdm] = {}
+        self.current_phase: Optional[int] = None
         self.update_interval: int = 10
 
-    def on_phase_changed(self, previous: TrainingPhaseType, current: TrainingPhaseType):
+    def on_phase_changed(self, previous: int, current: int):
         if previous in self.phase_bars:
             self.phase_bars[previous].close()
         
@@ -48,7 +47,7 @@ class ProgressTracker(TrainingObserver):
             phase = self.trainer.phases[current]
             self.phase_bars[current] = tqdm(
                 total=phase.end_iter - phase.start_iter + 1,
-                desc=f"{current.name.replace('_', ' ').title():<16}",
+                desc=f"{phase.name.title():<18}",
                 bar_format=self.bar_format
             )
 
@@ -90,7 +89,7 @@ class CheckpointSaver(TrainingObserver):
     
     def _save_gaussians(self, iteration):
         print("\n[ITER {}] Saving Gaussians".format(iteration))
-        self.trainer.scene.save(self.trainer.config.opt.iterations, self.trainer.config.model.model_path)
+        self.trainer.scene.save(self.trainer.total_iterations, self.trainer.config.model.model_path)
         
     def on_training_end(self):
-        self._save_gaussians(self.trainer.config.opt.iterations)
+        self._save_gaussians(self.trainer.total_iterations)
