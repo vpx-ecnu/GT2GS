@@ -24,6 +24,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
 
     for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
         rendering = render(view, gaussians, pipeline, background)["render"]
+        
         torchvision.utils.save_image(rendering, os.path.join(render_path, '{0:05d}'.format(idx) + ".jpg"))
 
 def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool):
@@ -81,7 +82,7 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
         # generate video
         folder = f'{args.model_path}/video/'
         saved_iters = [int(fname.split("_")[-1]) for fname in os.listdir(folder)]
-        path = os.path.join(folder, f'ours_{max(saved_iters)}/renders')
+        path = os.path.join(folder, f'ours_{scene.loaded_iter}/renders')
         scene_name = os.path.basename(args.model_path)
         filelist = os.listdir(path)
         filelist = sorted(filelist)

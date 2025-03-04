@@ -131,11 +131,11 @@ class ColorTransferPhaseOne(ColorTransferPhase):
         # 1. 考虑用clip替换聚类的pipeline
         # 2. 对齐ref-npr的setting，可以有一个完全先验的特征图
         # 3. ref-npr做实验，验证没有rgb loss，只有特征图loss情况下的结果
-        for i in range(0, 4):
+        for i in range(0, 36):
             # 先假设错切参数为0，旋转角度由i得到
             Hx = Hy = 0
             # TODO: 要保证是float格式
-            theta = i * 90.0
+            theta = i * 10.0
             
             # 获得线性变换矩阵（包括旋转角度和错切参数）
             M, M_parameter = generate_transformation_matrix(theta, Hx, Hy, style_img_width, style_img_height)
@@ -150,50 +150,52 @@ class ColorTransferPhaseOne(ColorTransferPhase):
             # print(img_feats.shape)
             ######################################################################
             # 不聚类
-            c, h, w = img_feats.shape
-            img_feats = img_feats.view(c, -1)
-            _, num_clusters = img_feats.shape
+            if self.trainer.config.style.gta_type == "default":
+                c, h, w = img_feats.shape
+                img_feats = img_feats.view(c, -1)
+                _, num_clusters = img_feats.shape
             
             ######################################################################
             # 聚类
-            
-            # # 处理为k-means可用形式
-            # c, h, w = img_feats.shape
-            # img_feats_flat = img_feats.permute(1, 2, 0).reshape(-1, c)
-            # img_feats_np = img_feats_flat.cpu().numpy()
-            
-            # # k-means
-            # # TODO: 超参调整
-            # num_clusters = 40
-            # kmeans = KMeans(n_clusters=num_clusters, random_state=42, max_iter=300)
-            # kmeans.fit(img_feats_np)
-            
-            # # 获取每个像素对应的聚类标签
-            # cluster_labels = kmeans.labels_  # [h * w]
+            if self.trainer.config.style.gta_type == "kmeans":
+                # 处理为k-means可用形式
+                c, h, w = img_feats.shape
+                img_feats_flat = img_feats.permute(1, 2, 0).reshape(-1, c)
+                img_feats_np = img_feats_flat.cpu().numpy()
+                
+                # k-means
+                # TODO: 超参调整
+                num_clusters = 40
+                kmeans = KMeans(n_clusters=num_clusters, random_state=42, max_iter=300)
+                kmeans.fit(img_feats_np)
+                
+                # 获取每个像素对应的聚类标签
+                cluster_labels = kmeans.labels_  # [h * w]
 
-            # # 获取聚类中心
-            # cluster_centers = kmeans.cluster_centers_  # [num_clusters, c]
+                # 获取聚类中心
+                cluster_centers = kmeans.cluster_centers_  # [num_clusters, c]
 
-            # # 将每个像素替换为其所属聚类的中心向量
-            # discretized_feats_flat = torch.tensor(cluster_centers, device=img_feats.device)
+                # 将每个像素替换为其所属聚类的中心向量
+                discretized_feats_flat = torch.tensor(cluster_centers, device=img_feats.device)
 
-            # # 将特征还原回原始形状 [c, -1]
-            # img_feats = discretized_feats_flat.view(-1, c).permute(1, 0)
+                # 将特征还原回原始形状 [c, -1]
+                img_feats = discretized_feats_flat.view(-1, c).permute(1, 0)
             
             ######################################################################
             # 裁剪
             # TODO: 后面可以手动控制变量范围
-            # c, h, w = img_feats.shape
-            # target_h = 8
-            # target_w = 8
-            
-            # start_h = (h - target_h) // 2
-            # start_w = (w - target_w) // 2
-            
-            # cropped_tensor = img_feats[:, start_h:start_h + target_h, start_w:start_w + target_w]
-            # # view必须张量在内存中连续，所以用reshape
-            # img_feats = cropped_tensor.reshape(c, -1)
-            # _, num_clusters = img_feats.shape
+            if self.trainer.config.style.gta_type == "clip":
+                c, h, w = img_feats.shape
+                target_h = 8
+                target_w = 8
+                
+                start_h = (h - target_h) // 2
+                start_w = (w - target_w) // 2
+                
+                cropped_tensor = img_feats[:, start_h:start_h + target_h, start_w:start_w + target_w]
+                # view必须张量在内存中连续，所以用reshape
+                img_feats = cropped_tensor.reshape(c, -1)
+                _, num_clusters = img_feats.shape
             
             # 将新特征组加入总特征集合（当前未考虑深度分组）
             
@@ -242,7 +244,20 @@ class StylizationPhase(TrainingPhase):
         self.original_feats = self.trainer.ctx.original_feats
         self.style_feat = self.trainer.ctx.style_feat
         self.style_matrix = self.trainer.ctx.style_matrix
+        if self.trainer.config.style.no_grad:
+            self.trainer.gaussians._xyz.requires_grad_(False)
+            self.trainer.gaussians._scaling.requires_grad_(False)
+            self.trainer.gaussians._opacity.requires_grad_(False)
         # self._init_projection()
+    
+    def on_phase_end(self):
+        # pass
+        if self.trainer.config.style.no_grad:
+            self.trainer.gaussians._xyz.requires_grad_(True)
+            self.trainer.gaussians._scaling.requires_grad_(True)
+            self.trainer.gaussians._opacity.requires_grad_(True)
+        else:
+            pass
     
     def _update_target(self, id, feat, matrix):
         self.prior_target = feat
@@ -257,22 +272,22 @@ class StylizationPhase(TrainingPhase):
             self.render_pkg = self.trainer.get_render_pkgs(curr_cam)
             render_image = self.render_pkg["render"]
             curr_image = self.trainer.ctx.original_images[curr_cam.uid]
-            self.render_feat = self.feat_extractor.get_features(render_image).squeeze()
+            self.render_feat = self.feat_extractor.get_features(render_image)
             
             
             render_depth = self.render_pkg["depth"]
             curr_depth = self.trainer.ctx.depth_images[curr_cam.uid]
             depth_loss = torch.mean((render_depth - curr_depth) ** 2)
             
-            if last_cam is None or self.trainer.config.style.prior == False:
-            # if True:
-                # manual
-                                
-                # # 造第一个视图的feature map用于调试
-                tmp_val = 4096
+            if self.trainer.config.style.prior == False:
+
+                target_feat, target_matrix = nnfm_feat_replace(self.render_feat, self.style_feat, self.style_matrix)
+                consistent_loss = 0
+            elif last_cam is None:
+                tmp_val = 64
                 
                 A, A_mat = self.style_feat[:, :tmp_val], self.style_matrix[:, :tmp_val]
-                B, B_mat = self.style_feat[:, tmp_val*1:tmp_val*2], self.style_matrix[:, tmp_val*1:tmp_val*2]
+                B, B_mat = self.style_feat[:, tmp_val*9:tmp_val*10], self.style_matrix[:, tmp_val*9:tmp_val*10]
                 
                 _, fc, fh, fw = self.original_feats.shape
                 C = torch.zeros(fc, fh, fw).to("cuda")
@@ -296,13 +311,6 @@ class StylizationPhase(TrainingPhase):
                 # C = torch.cat((upper_half, lower_half), dim=1)
                 target_feat = C
                 target_matrix = C_mat
-                
-                # # print(self.target_feats[0].mean(), self.target_matrixs[0].mean())
-                # # exit(0)
-                # ################################################
-                
-                # nnfm
-                # target_feat, target_matrix = nnfm_feat_replace(self.render_feat, self.style_feat, self.style_matrix)
                 consistent_loss = 0
                 
             else:
@@ -454,12 +462,18 @@ class GeometryProtectPhase(TrainingPhase):
     
     @torch.no_grad
     def on_phase_start(self):
-        pass
+        self.trainer.gaussians._features_dc.requires_grad_(False)
+        self.trainer.gaussians._features_rest.requires_grad_(False)
+        self.feat_extractor = self.trainer.feat_extractor
         # if self.config.style.color_transfer:
         #     color_transfer(self.trainer.ctx)
 
         # render_ctx(self.trainer.ctx)
         # exit(0)
+    
+    def on_phase_end(self):
+        self.trainer.gaussians._features_dc.requires_grad_(True)
+        self.trainer.gaussians._features_rest.requires_grad_(True)
 
     def on_iteration(self, iteration: int) -> Dict[str, torch.Tensor]:
         
@@ -477,6 +491,9 @@ class GeometryProtectPhase(TrainingPhase):
             curr_depth = self.trainer.ctx.depth_images[viewpoint_cam.uid]
             
             depth_loss = torch.mean((render_depth - curr_depth) ** 2)
+            render_feat = self.feat_extractor.get_features(render_image)
+            content_feat = self.feat_extractor.get_features(curr_image)
+            content_loss = torch.mean((render_feat - content_feat) ** 2) 
             
             # render_depth = self.render_pkg["depth"]
             # original_depth = self.trainer.ctx.depth_images[viewpoint_cam.uid]
@@ -486,6 +503,7 @@ class GeometryProtectPhase(TrainingPhase):
             
             loss = (
                 self.trainer.config.style.lambda_depth_loss * depth_loss 
+                + self.trainer.config.style.lambda_content_loss * content_loss
             )
             
             
@@ -505,21 +523,22 @@ class GeometryProtectPhase(TrainingPhase):
         return self.viewpoint_stack.pop(randint(0, len(self.viewpoint_stack) - 1))
 
     def _densification(self, iteration: int):
-        gaussians = self.trainer.gaussians
-        opt = self.trainer.config.opt
-        scene = self.trainer.scene
-        dataset = self.trainer.config.model
+        return 
+        # gaussians = self.trainer.gaussians
+        # opt = self.trainer.config.opt
+        # scene = self.trainer.scene
+        # dataset = self.trainer.config.model
         
-        viewspace_point_tensor = self.render_pkg["viewspace_points"]
-        visibility_filter = self.render_pkg["visibility_filter"]
-        radii = self.render_pkg["radii"]
+        # viewspace_point_tensor = self.render_pkg["viewspace_points"]
+        # visibility_filter = self.render_pkg["visibility_filter"]
+        # radii = self.render_pkg["radii"]
         
-        gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
-        gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
+        # gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
+        # gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
-        if iteration % opt.densification_interval == 0:
-            size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-            gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
+        # if iteration % opt.densification_interval == 0:
+        #     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
+        #     gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
         
-        if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == self.start_iter):
-            gaussians.reset_opacity()           
+        # if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == self.start_iter):
+        #     gaussians.reset_opacity()           
