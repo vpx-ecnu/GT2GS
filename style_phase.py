@@ -20,6 +20,13 @@ class TrainingPhase(ABC):
         self.viewpoint_stack = None
         self.name = name
         self.uid = uid
+        
+    def update(self, iteration, loss):
+        
+        loss.backward()
+        self._densification(iteration)
+        self.trainer.gaussians.optimizer.step()
+        self.trainer.gaussians.optimizer.zero_grad(set_to_none=True)
 
     def on_phase_start(self): ...
 
@@ -28,11 +35,10 @@ class TrainingPhase(ABC):
 
     def on_phase_end(self): ...
     
-    @abstractmethod
     def _densification(self, iteration: int): ...
 
 
-class ColorTransferPhase(TrainingPhase):
+class ProcessPhase(TrainingPhase):
 
     def on_iteration(self, iteration: int) -> Dict[str, torch.Tensor]:
         
@@ -60,12 +66,8 @@ class ColorTransferPhase(TrainingPhase):
                 (1.0 - self.trainer.config.opt.lambda_dssim) * Ll1 + 
                 self.trainer.config.opt.lambda_dssim * (1.0 - ssim_val)
             )
-            
-            loss.backward()
-            self.trainer.gaussians.optimizer.step()
-            self.trainer.gaussians.optimizer.zero_grad(set_to_none=True)
+            self.update(iteration, loss)
               
-        self._densification(iteration)
         return {
             "Points": f"{self.trainer.gaussians._opacity.shape[0]}",
             "Loss": f"{loss.item():.{7}f}"
@@ -76,29 +78,38 @@ class ColorTransferPhase(TrainingPhase):
             self.viewpoint_stack = self.trainer.scene.getTrainCameras().copy()
         return self.viewpoint_stack.pop(randint(0, len(self.viewpoint_stack) - 1))
 
+            
+class PreProcessPhase(ProcessPhase):
+    
     def _densification(self, iteration: int):
+        
         gaussians = self.trainer.gaussians
         opt = self.trainer.config.opt
-        scene = self.trainer.scene
-        dataset = self.trainer.config.model
+        # scene = self.trainer.scene
+        # dataset = self.trainer.config.model
         
-        viewspace_point_tensor = self.render_pkg["viewspace_points"]
-        visibility_filter = self.render_pkg["visibility_filter"]
-        radii = self.render_pkg["radii"]
+        # viewspace_point_tensor = self.render_pkg["viewspace_points"]
+        # visibility_filter = self.render_pkg["visibility_filter"]
+        # radii = self.render_pkg["radii"]
         
-        gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
-        gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
+        # gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
+        # gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
-        if iteration % opt.densification_interval == 0:
-            size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-            gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
-        
-        if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == self.start_iter):
-            gaussians.reset_opacity()
+        # if iteration % opt.densification_interval == 0:
+        #     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
+        #     gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
             
-class ColorTransferPhaseOne(ColorTransferPhase):
-
-    
+        # if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == self.start_iter):
+        #     gaussians.reset_opacity()
+        
+        if (
+            (iteration - self.start_iter) % opt.densification_interval == 0 and 
+            (iteration - self.start_iter) <= (self.end_iter - self.start_iter + 1) // 2
+        ):
+            tmp = torch.max(gaussians.get_scaling, dim=1).values
+            threshold = torch.quantile(tmp, 0.95)
+            gaussians.split_special_gaussians(tmp > threshold)
+            
     @torch.no_grad
     def on_phase_start(self):
         if self.config.style.color_transfer:
@@ -212,11 +223,11 @@ class ColorTransferPhaseOne(ColorTransferPhase):
         self.trainer.ctx.style_matrix = torch.cat(self.trainer.ctx.style_matrix, dim=1)
         
 
-class ColorTransferPhaseTwo(ColorTransferPhase):
+class PostProcessPhase(ProcessPhase):
     
     @torch.no_grad
     def on_phase_start(self):
-        # pass
+        
         self.viewpoint_stack = self.trainer.scene.getTrainCameras().copy()
         self.viewpoint_len = len(self.viewpoint_stack)
         for i in range(0, self.viewpoint_len):
@@ -231,6 +242,31 @@ class ColorTransferPhaseTwo(ColorTransferPhase):
         
 
 class StylizationPhase(TrainingPhase):
+    
+    def _densification(self, iteration: int):
+        
+        gaussians = self.trainer.gaussians
+        opt = self.trainer.config.opt
+        scene = self.trainer.scene
+        # dataset = self.trainer.config.model
+        
+        viewspace_point_tensor = self.render_pkg["viewspace_points"]
+        visibility_filter = self.render_pkg["visibility_filter"]
+        radii = self.render_pkg["radii"]
+        
+        gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
+        gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
+            
+        if (iteration - self.start_iter) % opt.style_densification_interval == 0:
+            # threshold = torch.quantile(radii[visibility_filter].float(), 0.10)
+            
+            # big_mask = torch.logical_and(visibility_filter, radii > threshold)
+            # gaussians.split_special_gaussians(big_mask, 10)
+            
+            # tmp = torch.max(gaussians.get_scaling, dim=1).values
+            # threshold = torch.quantile(tmp, 0.80)
+            # gaussians.split_special_gaussians(tmp > threshold)
+            gaussians.densify_and_prune(opt.style_densification_threshold, 0.005, scene.cameras_extent, 20)
     
     @torch.no_grad
     def on_phase_start(self):
@@ -421,9 +457,7 @@ class StylizationPhase(TrainingPhase):
                 + self.trainer.config.style.lambda_depth_loss * depth_loss
             )
             
-            loss.backward()
-            self.trainer.gaussians.optimizer.step()
-            self.trainer.gaussians.optimizer.zero_grad(set_to_none=True)
+            self.update(iteration, loss)
             
             if self.trainer.config.app.need_log:
                 wandb.log({
@@ -434,7 +468,6 @@ class StylizationPhase(TrainingPhase):
                     "Depth Loss": depth_loss.item()
                 })
             
-        self._densification(iteration)
         
         return {
             "Points": f"{self.trainer.gaussians._opacity.shape[0]}",
@@ -453,10 +486,7 @@ class StylizationPhase(TrainingPhase):
             last_cam = self.viewpoint_stack[self.viewpoint_idx - 1]
         curr_cam = self.viewpoint_stack[self.viewpoint_idx]
         return last_cam, curr_cam
-    
-    
-    def _densification(self, iteration: int):
-        return
+
            
 class GeometryProtectPhase(TrainingPhase):
     
@@ -506,12 +536,8 @@ class GeometryProtectPhase(TrainingPhase):
                 + self.trainer.config.style.lambda_content_loss * content_loss
             )
             
+            self.update(iteration, loss)
             
-            loss.backward()
-            self.trainer.gaussians.optimizer.step()
-            self.trainer.gaussians.optimizer.zero_grad(set_to_none=True)
-            
-        self._densification(iteration)
         return {
             "Points": f"{self.trainer.gaussians._opacity.shape[0]}",
             "Loss": f"{loss.item():.{7}f}"

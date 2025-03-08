@@ -7,7 +7,7 @@ from style_utils import CUDATimer
 
 from gaussian_renderer import network_gui, render
 from style_observer import TrainingMetrics
-from style_phase import StylizationPhase, ColorTransferPhaseOne, GeometryProtectPhase, ColorTransferPhaseTwo
+from style_phase import StylizationPhase, PreProcessPhase, GeometryProtectPhase, PostProcessPhase
 from style_observer import TrainingObserver, ProgressTracker, CheckpointSaver
 from style_preprocess import preprocess
 
@@ -95,6 +95,9 @@ class StyleTrainer:
         self.total_iterations = 0
         
         def _add_phase(phase, phase_name, num_iter):
+            if num_iter == 0:
+                return
+            
             self.total_iterations += num_iter
             
             nonlocal phase_iter, phase_uid
@@ -108,15 +111,13 @@ class StyleTrainer:
             phase_uid += 1
         
         
-        if self.config.style.color_transfer:
-            _add_phase(ColorTransferPhaseOne, "Pre Colortransfer", self.config.style.color_transfer_iter)
+        _add_phase(PreProcessPhase, "Pre Process", self.config.style.preprocess_iter)
             
         for i in range(self.config.style.rounds):
             _add_phase(StylizationPhase,     f"Stylization {i}", self.config.style.style_iter)
             _add_phase(GeometryProtectPhase, f"Geometry    {i}", self.config.style.geometry_iter)
         
-        if self.config.style.color_transfer:
-            _add_phase(ColorTransferPhaseTwo, "Aft Colortransfer", self.config.style.color_transfer_iter)
+        _add_phase(PostProcessPhase, "Post Process", self.config.style.postpreprocess_iter)
         
 
     def _init_observers(self):

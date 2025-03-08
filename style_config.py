@@ -40,6 +40,10 @@ class OptimizationConfig:
     
     densify_grad_threshold: float = 0.0002
     random_background: bool = field(False, action="store_true")
+    
+    
+    style_densification_interval: int = 50
+    style_densification_threshold: float = 0.00001
 
 @dataclass
 class ApplicationConfig:
@@ -71,7 +75,8 @@ class StyleConfig:
     lambda_depth_loss: float = 0.01
     
     color_transfer: bool = field(False, action="store_true")
-    color_transfer_iter: int = 400
+    preprocess_iter: int = 400
+    postpreprocess_iter: int = 400
     
     rounds: int = 10
     style_iter: int = 60
@@ -112,7 +117,6 @@ class ConfigManager:
         style = os.path.splitext(os.path.basename(self.style.style_image))[0]
         self.model.model_path = f"output/style/{scene}/{style}/"
     
-    # TODO: 需要能够交替的优雅实现
     def _process_iteration(self):
         pass
         # self.opt.iterations = (self.style.color_transfer_iter * 2 if self.style.color_transfer else 0)

@@ -32,7 +32,7 @@ class ProgressTracker(TrainingObserver):
         self.trainer = trainer
         self.global_pbar = tqdm(
             total=trainer.total_iterations, 
-            desc=f"{'Global Process':<16}",
+            desc=f"{'Global Process':<18}",
             bar_format=self.bar_format
         )
         self.phase_bars: Dict[int, tqdm] = {}
