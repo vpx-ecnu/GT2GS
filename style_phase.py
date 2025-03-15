@@ -8,6 +8,7 @@ import torch
 from style_utils import *
 from utils.loss_utils import l1_loss, ssim
 from style_loss import *
+from torch.linalg import svd, det 
 import wandb
     
 
@@ -301,6 +302,156 @@ class StylizationPhase(TrainingPhase):
         self.prior_matrix = matrix
     
     def on_iteration(self, iteration: int) -> Dict[str, torch.Tensor]:
+ 
+        def compute_rotation_angles(A, B, fh, fw):
+            """
+            计算特征图中每个位置的旋转角度（并行化版本）。
+            
+            参数：
+                A (torch.Tensor): 形状为 [h, w, 2] 的张量，表示原始坐标 [X, Y]
+                B (torch.Tensor): 形状为 [h, w, 2] 的张量，表示变换后的坐标 [X, Y]
+                fh (int): 特征图的高度
+                fw (int): 特征图的宽度
+            
+            返回：
+                C (torch.Tensor): 形状为 [1, fh, fw] 的张量，表示每个特征图像素的旋转角度
+            """
+            # 获取原图像尺寸
+            h, w, _ = A.shape
+            
+            # 计算池化步幅
+            pool_size_h = h // fh
+            pool_size_w = w // fw
+            
+            # 确保尺寸匹配
+            # assert h % fh == 0 and w % fw == 0, "特征图尺寸必须能整除原图像尺寸"
+            
+            # 生成所有 (x, y) 位置的网格
+            x_indices = torch.arange(fh, device=A.device)
+            y_indices = torch.arange(fw, device=A.device)
+            x_grid, y_grid = torch.meshgrid(x_indices, y_indices, indexing='ij')
+            
+            # 计算四个角点的索引
+            top_left_x = x_grid * pool_size_h
+            top_left_y = y_grid * pool_size_w
+            top_right_x = x_grid * pool_size_h
+            top_right_y = (y_grid + 1) * pool_size_w - 1
+            bottom_left_x = (x_grid + 1) * pool_size_h - 1
+            bottom_left_y = y_grid * pool_size_w
+            bottom_right_x = (x_grid + 1) * pool_size_h - 1
+            bottom_right_y = (y_grid + 1) * pool_size_w - 1
+            
+            # 提取所有位置的角点，形状为 (fh, fw, 4, 2)
+            A_S = torch.stack([
+                A[top_left_x, top_left_y],
+                A[top_right_x, top_right_y],
+                A[bottom_left_x, bottom_left_y],
+                A[bottom_right_x, bottom_right_y]
+            ], dim=2)
+            
+            B_S = torch.stack([
+                B[top_left_x, top_left_y],
+                B[top_right_x, top_right_y],
+                B[bottom_left_x, bottom_left_y],
+                B[bottom_right_x, bottom_right_y]
+            ], dim=2)
+            
+            # 批量中心化
+            mu_a = A_S.mean(dim=2, keepdim=True)  # 形状 (fh, fw, 1, 2)
+            mu_b = B_S.mean(dim=2, keepdim=True)  # 形状 (fh, fw, 1, 2)
+            A_centered = A_S - mu_a  # 形状 (fh, fw, 4, 2)
+            B_centered = B_S - mu_b  # 形状 (fh, fw, 4, 2)
+            
+            # 批量构造 H 矩阵
+            H = torch.einsum('fhij,fhjk->fhik', B_centered.permute(0, 1, 3, 2), A_centered)
+            
+            # 批量 SVD 分解
+            U, S, Vh = torch.svd(H)  # U, Vh: (fh, fw, 2, 2), S: (fh, fw, 2)
+            
+            # 计算旋转矩阵 R = U @ Vh^T
+            R = torch.einsum('fhij,fhjk->fhik', U, Vh.permute(0, 1, 3, 2))  # (fh, fw, 2, 2)
+            
+            # 检查行列式并调整（确保 R 是旋转矩阵）
+            det_R = R[:, :, 0, 0] * R[:, :, 1, 1] - R[:, :, 0, 1] * R[:, :, 1, 0]  # (fh, fw)
+            mask = det_R < 0
+            if mask.any():
+                U[mask, :, -1] = -U[mask, :, -1]  # 调整 U 的最后一列
+                R[mask] = torch.bmm(U[mask], Vh[mask].permute(0, 2, 1))
+            
+            # 批量提取角度 theta
+            theta = torch.atan2(R[:, :, 1, 0], R[:, :, 0, 0])  # 形状 (fh, fw)
+            
+            # 赋值给 C
+            C = theta.unsqueeze(0)  # 形状 (1, fh, fw)
+            
+            return C
+        
+        # def compute_rotation_angles(A, B, fh, fw):
+        #     h, w, _ = A.shape
+            
+        #     # pool_size = 8
+        #     pool_size = h // fh
+            
+        #     C = torch.zeros(1, fh, fw, device=A.device, dtype=A.dtype)
+            
+        #     for x in range(fh):
+        #             for y in range(fw):
+        #                 # 提取对应区域点对
+        #                 # A_S = A[x * pool_size : (x + 1) * pool_size,
+        #                 #         y * pool_size : (y + 1) * pool_size, :]
+        #                 # B_S = B[x * pool_size : (x + 1) * pool_size,
+        #                 #         y * pool_size : (y + 1) * pool_size, :]
+                        
+        #                 # 只提取角点进行加速
+        #                 top_left = (x * pool_size, y * pool_size)
+        #                 top_right = (x * pool_size, (y + 1) * pool_size - 1)
+        #                 bottom_left = ((x + 1) * pool_size - 1, y * pool_size)
+        #                 bottom_right = ((x + 1) * pool_size - 1, (y + 1) * pool_size - 1)
+                        
+        #                 # 从 A 和 B 中提取四个角点
+        #                 A_S = torch.stack([
+        #                     A[top_left[0], top_left[1]],
+        #                     A[top_right[0], top_right[1]],
+        #                     A[bottom_left[0], bottom_left[1]],
+        #                     A[bottom_right[0], bottom_right[1]]
+        #                 ])  # 形状 (4, 2)
+                        
+        #                 B_S = torch.stack([
+        #                     B[top_left[0], top_left[1]],
+        #                     B[top_right[0], top_right[1]],
+        #                     B[bottom_left[0], bottom_left[1]],
+        #                     B[bottom_right[0], bottom_right[1]]
+        #                 ])
+                        
+                        
+                        
+        #                 # 不考虑平移，考虑以中心进行的2*2变换
+        #                 mu_a = A_S.mean(dim=[0, 1])  # 形状 (2,)
+        #                 mu_b = B_S.mean(dim=[0, 1])
+                        
+        #                 A_centered = A_S - mu_a
+        #                 B_centered = B_S - mu_b
+                        
+        #                 # 估计矩阵
+        #                 H = (B_centered.reshape(-1, 2).t() @ A_centered.reshape(-1, 2))
+                        
+        #                 # SVD（分解旋转和缩放）
+        #                 U, S, Vh = svd(H)
+                        
+        #                 # 旋转矩阵
+        #                 R = U @ Vh.t()
+                        
+        #                 # 检查行列式，确保 R 是旋转矩阵（det=1）而非反射（det=-1）
+        #                 if det(R) < 0:
+        #                     U[:, -1] = -U[:, -1]
+        #                     R = U @ Vh.t()
+                        
+        #                 # 从旋转矩阵提取角度 theta
+        #                 theta = torch.atan2(R[1, 0], R[0, 0])
+                        
+        #                 C[0, x, y] = theta
+    
+        #     return C
         
         last_cam, curr_cam = self._get_viewpoint_cam()
         
@@ -316,7 +467,7 @@ class StylizationPhase(TrainingPhase):
             curr_depth = self.trainer.ctx.depth_images[curr_cam.uid]
             depth_loss = torch.mean((render_depth - curr_depth) ** 2)
             
-            if self.trainer.config.style.prior == False:
+            if self.trainer.config.style.prior == False or self.trainer.cur_phase % 2 == 0:
 
                 target_feat, target_matrix = nnfm_feat_replace(self.render_feat, self.style_feat, self.style_matrix)
                 consistent_loss = 0
@@ -401,18 +552,21 @@ class StylizationPhase(TrainingPhase):
                     # 读入先验数据
                     # prior_target和prior_matrix还需要进行双线性插值进行转换才可以使用
                 with torch.no_grad():
-                    # TODO: 动态维护
+                    # TODO: 动态维护(done)
                     prior_target = self.prior_target
-                    # TODO：按照几何进行改变
-                    # 使用4个点对的关系求解旋转和错切
+                    # TODO：按照几何进行改变(done-旋转)
+                    # 使用4个点对（or更多）的关系求解旋转和错切
                     prior_matrix = self.prior_matrix
                     
                     h, w = trans_mask.shape
                     rows = torch.arange(h, device=prior_target.device)  # (h,)
                     cols = torch.arange(w, device=prior_target.device)  # (w,)
                     grid_i, grid_j = torch.meshgrid(rows, cols, indexing="ij")
+                    # 原始像素坐标矩阵
+                    # pos_pre为变换到前一个像素的
+                    # 记得转成float
                     pos = torch.stack([grid_i, grid_j], dim=-1)
-                    
+                    pos_float = pos * 1.0
                     
                     # 处理先验mask和对应问题
                     _, fh, fw = self.render_feat.shape
@@ -426,12 +580,15 @@ class StylizationPhase(TrainingPhase):
                     img_h = fh_grid * 8 + 4
                     img_w = fw_grid * 8 + 4
                     # TODO：转换成特征像素对应的多个原始像素（最少四个？）
-                    # TODO：计算warp前对应的原始像素
-                    # TODO：计算其仿射变换矩阵（由于错切难以处理，可以考虑简化为只有旋转）
-                    # TODO: 用仿射变换矩阵修改先验矩阵
+                    # TODO：计算warp前对应的原始像素(done-pos_float)
+                    # TODO：计算其仿射变换矩阵（由于错切难以处理，可以考虑简化为只有旋转）(done)
+                    # TODO: 用仿射变换矩阵修改先验矩阵(done-原始角度+新角度)
+                    
+                    # rotation = compute_rotation_angles(pos_pre, pos_float, fh, fw)
+                    # prior_matrix = prior_matrix + rotation
                     
                     
-                    # 获得先验mask
+                    # 获得先验mask, 构建特征图大小的mask
                     prior_idx = torch.zeros(fh, fw, 2).to(prior_target.device)
                     prior_idx = pos[img_h, img_w]
                     rows = prior_idx[:, :, 0]

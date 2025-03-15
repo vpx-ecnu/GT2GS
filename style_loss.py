@@ -170,7 +170,8 @@ def prior_feat_replace(A, B, Mat, p_mask, p_feats, p_Mat):
     indices = prior_argmin_cos_distance(A_flat, B_flat, Mat_flat, p_mask_flat, p_feats_flat, p_Mat_flat)
     C_flat = B[:, indices]
     # TODO：带有先验Mat的要考虑维持原有的Mat
-    C_matrix = Mat[:, indices]
+    # C_matrix = Mat[:, indices]
+    C_matrix = Mat[:, indices] * (1 - p_mask_flat) + p_Mat_flat * p_mask_flat
     return C_flat.reshape(c, h, w), C_matrix.reshape(1, h, w)
     
     

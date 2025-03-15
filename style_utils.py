@@ -376,13 +376,15 @@ class Warper:
         #                                                 intrinsic2)
         
         trans_coordinates = trans_points1[:, :, :, :2, 0] / trans_points1[:, :, :, 2:3, 0]
+        # (h, w, 2) 先前的坐标映射到新坐标系后的坐标
         pos_pre = trans_coordinates.squeeze(0)
+        # 因为原来里面是[w, h]，所以要进行变换
+        pos_pre = pos_pre[..., [1, 0]]
+        
         rows = torch.arange(h, device=self.device)  # (h,)
         cols = torch.arange(w, device=self.device)  # (w,)
         grid_i, grid_j = torch.meshgrid(rows, cols, indexing="ij")
         pos = torch.stack([grid_i, grid_j], dim=-1)  # (h, w, 2)
-        # 因为原来里面是[w, h]，所以要进行变换
-        pos_pre = pos_pre[..., [1, 0]]
         
         # 直接拿特征图和图像空间的比例，用图像采样点直接转换为特征图采样点
         # 应该下采样得到一个特征图层面的mask，然后算先验时要区分为mask内的部分和mask外的部分，mask外就是nnfm，mask内就要加上先验条件，包括矩阵方向相似度和特征相似度
