@@ -5,5 +5,7 @@ python style_main.py --ip 0.0.0.0 \
     --port 6012 \
     --color_transfer \
     --name $3 \
+    --gta_type clip \
+    --prior \
 
 # 143.jpg

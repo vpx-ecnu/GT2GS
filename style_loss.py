@@ -138,6 +138,8 @@ def prior_argmin_cos_distance(a, b, Mat, p_mask, p_feats, p_Mat):
         similarity2 = torch.mm(p_feats_batch_normalized.t(), b_normalized) + torch.mm(p_Mat_batch.t(), Mat)
         d_mat2 = (1.0 - similarity2) * cal_p_mask
         
+        # TODO: 旋转操作
+        
         # Mat distance
         target_Mat = p_Mat_batch.view(-1, 1)
         # 有需要调整的超参
@@ -146,6 +148,7 @@ def prior_argmin_cos_distance(a, b, Mat, p_mask, p_feats, p_Mat):
         # distance聚合
         # d_mat_all = d_mat + d_mat2 + l1_dist
         d_mat_all = d_mat + l1_dist
+        
         
         # 找到每个位置的最小距离索引
         z_best_batch = torch.argmin(d_mat_all, dim=1)  # [L]
@@ -166,6 +169,7 @@ def prior_feat_replace(A, B, Mat, p_mask, p_feats, p_Mat):
     # indices:[h*w]
     indices = prior_argmin_cos_distance(A_flat, B_flat, Mat_flat, p_mask_flat, p_feats_flat, p_Mat_flat)
     C_flat = B[:, indices]
+    # TODO：带有先验Mat的要考虑维持原有的Mat
     C_matrix = Mat[:, indices]
     return C_flat.reshape(c, h, w), C_matrix.reshape(1, h, w)
     

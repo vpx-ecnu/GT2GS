@@ -68,6 +68,7 @@ class StyleConfig:
     gta_type: str = "default"
     no_grad: bool = field(False, action="store_true")
     prior: bool = field(False, action="store_true")
+    density: bool = field(False, action="store_true")
     lambda_consistent_loss: float = 2
     lambda_prior_loss: float = 2
     lambda_content_loss: float = 0.005

@@ -244,7 +244,8 @@ class PostProcessPhase(ProcessPhase):
 class StylizationPhase(TrainingPhase):
     
     def _densification(self, iteration: int):
-        
+        if not self.trainer.config.style.density:
+            return 
         gaussians = self.trainer.gaussians
         opt = self.trainer.config.opt
         scene = self.trainer.scene
@@ -320,8 +321,24 @@ class StylizationPhase(TrainingPhase):
                 target_feat, target_matrix = nnfm_feat_replace(self.render_feat, self.style_feat, self.style_matrix)
                 consistent_loss = 0
             elif last_cam is None:
+                # TODO：一个更好的先验控制模块
+                # input: 给定reference图的特征图 or mask+对应区域特征图角度控制
+                # TODO: mask额外接入or单独接入
+                # TODO: 跑NNST获得reference图
+                # if self.trainer.config.style.ref_image:
+                #     target_feat = 
+                #     target_matrix = 
+                # elif self.trainer.config.style.ref_mask:
+                #     target_feat = 
+                #     target_matrix = 
+                # else:
+                #     target_feat = 
+                #     target_matrix = 
+                    # pass
+
+
+                # self.feat_extractor.get_features(ref_image)
                 tmp_val = 64
-                
                 A, A_mat = self.style_feat[:, :tmp_val], self.style_matrix[:, :tmp_val]
                 B, B_mat = self.style_feat[:, tmp_val*9:tmp_val*10], self.style_matrix[:, tmp_val*9:tmp_val*10]
                 
@@ -334,7 +351,7 @@ class StylizationPhase(TrainingPhase):
                     C[i, :fh // 2, :] = A[i, A_indices[i]]
                 for i in range(matc):
                     C_mat[i, :fh // 2, :] = A_mat[i, A_indices[i]]
-                    
+                
                 B_indices = torch.randint(0, 5, (fc, fh - fh // 2, fw))
                 for i in range(fc):
                     C[i, fh // 2:, :] = B[i, B_indices[i]]
@@ -386,6 +403,8 @@ class StylizationPhase(TrainingPhase):
                 with torch.no_grad():
                     # TODO: 动态维护
                     prior_target = self.prior_target
+                    # TODO：按照几何进行改变
+                    # 使用4个点对的关系求解旋转和错切
                     prior_matrix = self.prior_matrix
                     
                     h, w = trans_mask.shape
@@ -397,13 +416,22 @@ class StylizationPhase(TrainingPhase):
                     
                     # 处理先验mask和对应问题
                     _, fh, fw = self.render_feat.shape
+                    # 特征图坐标
                     fh_grid, fw_grid = torch.meshgrid(
                         torch.arange(fh, device=prior_target.device),
                         torch.arange(fw, device=prior_target.device),
                         indexing='ij'
                     )
+                    # 特征像素对应的原始像素的中心
                     img_h = fh_grid * 8 + 4
                     img_w = fw_grid * 8 + 4
+                    # TODO：转换成特征像素对应的多个原始像素（最少四个？）
+                    # TODO：计算warp前对应的原始像素
+                    # TODO：计算其仿射变换矩阵（由于错切难以处理，可以考虑简化为只有旋转）
+                    # TODO: 用仿射变换矩阵修改先验矩阵
+                    
+                    
+                    # 获得先验mask
                     prior_idx = torch.zeros(fh, fw, 2).to(prior_target.device)
                     prior_idx = pos[img_h, img_w]
                     rows = prior_idx[:, :, 0]
