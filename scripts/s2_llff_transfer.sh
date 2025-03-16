@@ -7,5 +7,6 @@ python style_main.py --ip 0.0.0.0 \
     --name $3 \
     --gta_type clip \
     --prior \
+    --density \
 
 # 143.jpg

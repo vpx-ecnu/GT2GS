@@ -35,7 +35,7 @@ if __name__ == "__main__":
     
     base_name = os.path.basename(image_path)
     file_name_without_ext, ext = os.path.splitext(base_name)
-    save_path = f"/home/lwj/data/ICCV/TAT-GS/texture_refinement/{file_name_without_ext}_{n}x{n}{ext}"
+    save_path = f"/home/lwj/data/MM2025/TAT-GS/texture_refinement/{file_name_without_ext}_{n}x{n}{ext}"
 
     # 保存或显示结果
     cv2.imwrite(save_path, result_image)

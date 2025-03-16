@@ -63,7 +63,7 @@ class StyleTrainer:
     
     def _switch_phase(self, new_phase):
         
-        if self.cur_phase is not None:
+        if self.cur_phase != -1:
             self.phases[self.cur_phase].on_phase_end()
         
         self.cur_phase = new_phase

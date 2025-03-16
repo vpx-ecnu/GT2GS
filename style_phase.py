@@ -40,7 +40,7 @@ class TrainingPhase(ABC):
 
 
 class ProcessPhase(TrainingPhase):
-
+    
     def on_iteration(self, iteration: int) -> Dict[str, torch.Tensor]:
         
         viewpoint_cam = self._get_viewpoint_cam()
@@ -82,6 +82,7 @@ class ProcessPhase(TrainingPhase):
             
 class PreProcessPhase(ProcessPhase):
     
+    
     def _densification(self, iteration: int):
         
         gaussians = self.trainer.gaussians
@@ -122,6 +123,25 @@ class PreProcessPhase(ProcessPhase):
         self.trainer.feat_extractor = FeatureExtractor()
         self._init_original_feats()
         self._init_style_feat()
+        
+        
+        viewpoint_stack = self.trainer.scene.getTrainCameras()
+        self.trainer.ctx.depth_images = []
+        # self.trainer.ctx.original_images = []
+        
+        # colmap maybe change image's size
+        min_h, min_w = 10000, 10000
+        for i, view in enumerate(viewpoint_stack):
+            min_h = min(min_h, view.image_height)
+            min_w = min(min_w, view.image_width)
+        self.trainer.ctx.image_width = min_w
+        self.trainer.ctx.image_height = min_h
+        
+        for _, view in enumerate(viewpoint_stack):
+            depth_image = self.trainer.get_render_pkgs(view)["depth"]
+            self.trainer.ctx.depth_images.append(depth_image.squeeze().detach())
+            
+        self.trainer.ctx.depth_images = torch.stack(self.trainer.ctx.depth_images).to(device=self.trainer.device)
  
     def _init_original_feats(self):
         self.trainer.ctx.original_feats = []
@@ -143,11 +163,11 @@ class PreProcessPhase(ProcessPhase):
         # 1. 考虑用clip替换聚类的pipeline
         # 2. 对齐ref-npr的setting，可以有一个完全先验的特征图
         # 3. ref-npr做实验，验证没有rgb loss，只有特征图loss情况下的结果
-        for i in range(0, 36):
+        for i in range(0, 360):
             # 先假设错切参数为0，旋转角度由i得到
             Hx = Hy = 0
             # TODO: 要保证是float格式
-            theta = i * 10.0
+            theta = i * 1.0
             
             # 获得线性变换矩阵（包括旋转角度和错切参数）
             M, M_parameter = generate_transformation_matrix(theta, Hx, Hy, style_img_width, style_img_height)
@@ -491,7 +511,7 @@ class StylizationPhase(TrainingPhase):
                 # self.feat_extractor.get_features(ref_image)
                 tmp_val = 64
                 A, A_mat = self.style_feat[:, :tmp_val], self.style_matrix[:, :tmp_val]
-                B, B_mat = self.style_feat[:, tmp_val*9:tmp_val*10], self.style_matrix[:, tmp_val*9:tmp_val*10]
+                B, B_mat = self.style_feat[:, tmp_val*90:tmp_val*91], self.style_matrix[:, tmp_val*90:tmp_val*91]
                 
                 _, fc, fh, fw = self.original_feats.shape
                 C = torch.zeros(fc, fh, fw).to("cuda")
