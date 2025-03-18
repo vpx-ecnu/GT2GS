@@ -65,6 +65,7 @@ class StyleTrainer:
         
         if self.cur_phase != -1:
             self.phases[self.cur_phase].on_phase_end()
+            del self.phases[self.cur_phase]
         
         self.cur_phase = new_phase
         self.phases[self.cur_phase].on_phase_start()

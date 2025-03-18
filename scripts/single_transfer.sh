@@ -12,3 +12,9 @@ python style_main.py \
     -o /Datasets/radegs_0/llff/$1 \
     --style_image /Datasets/styles/texture/$2 \
     --color_transfer \
+    --gta_type clip \
+    --prior \
+    --density \
+    --round 60 \
+    --style_iter 10
+
