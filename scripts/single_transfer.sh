@@ -15,6 +15,8 @@ python style_main.py \
     --gta_type clip \
     --prior \
     --density \
-    --round 60 \
-    --style_iter 10
+    --need_log \
+    # --style_iter 10 \
+    # --round 60 \
+    # --style_iter 10
 

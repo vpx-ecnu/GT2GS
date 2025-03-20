@@ -74,6 +74,7 @@ class StyleConfig:
     lambda_content_loss: float = 0.005
     lambda_imgtv_loss: float = 0.02
     lambda_depth_loss: float = 0.01
+    lambda_shape_loss: float = 0.1
     
     color_transfer: bool = field(False, action="store_true")
     preprocess_iter: int = 400
@@ -85,6 +86,9 @@ class StyleConfig:
     
     style_image: str = None
     style_image_size: int = 256
+    
+    init_densification_image_intervals: int = 10
+    init_densification_downsample: int = 2
     
 class ConfigManager:
     

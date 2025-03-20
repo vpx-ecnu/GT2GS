@@ -109,8 +109,8 @@ class PreProcessPhase(ProcessPhase):
             (iteration - self.start_iter) <= (self.end_iter - self.start_iter + 1) // 2
         ):
             tmp = torch.max(gaussians.get_scaling, dim=1).values
-            threshold = torch.quantile(tmp, 0.95)
-            gaussians.split_special_gaussians(tmp > threshold)
+            self.threshold = torch.quantile(tmp, 0.95)
+            gaussians.split_special_gaussians(tmp > self.threshold)
             
     @torch.no_grad
     def on_phase_start(self):
@@ -646,8 +646,9 @@ class StylizationPhase(TrainingPhase):
             self._update_target(curr_cam.uid, target_feat, target_matrix)
             prior_loss = cos_distance(target_feat, self.render_feat)
             content_loss = torch.mean((self.render_feat - self.original_feats[curr_cam.uid]) ** 2) 
-            # print(prior_loss, content_loss)
-            # # exit(0)
+            
+            top2_values, _ = torch.topk(self.trainer.gaussians.get_scaling, k=2, dim=1) 
+            shape_loss = (top2_values[:, 0] / top2_values[:, 1]).mean()
             imgtv_loss = get_imgtv_loss(render_image)
             
             concat_and_save_images("./image.jpg", curr_image, render_image, curr_depth, render_depth)
@@ -660,6 +661,7 @@ class StylizationPhase(TrainingPhase):
                 + self.trainer.config.style.lambda_content_loss * content_loss
                 + self.trainer.config.style.lambda_imgtv_loss * imgtv_loss
                 + self.trainer.config.style.lambda_depth_loss * depth_loss
+                + self.trainer.config.style.lambda_shape_loss * shape_loss
             )
             
             self.update(iteration, loss)
@@ -670,7 +672,8 @@ class StylizationPhase(TrainingPhase):
                     "Prior Loss": prior_loss.item(),
                     "Content Loss": content_loss.item(),
                     "ImgTV Loss": imgtv_loss.item(),
-                    "Depth Loss": depth_loss.item()
+                    "Depth Loss": depth_loss.item(),
+                    "Shape Loss": shape_loss.item()
                 })
             
         

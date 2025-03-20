@@ -65,7 +65,8 @@ class StyleTrainer:
         
         if self.cur_phase != -1:
             self.phases[self.cur_phase].on_phase_end()
-            del self.phases[self.cur_phase]
+            self.phases[self.cur_phase] = None
+            # del self.phases[self.cur_phase]
         
         self.cur_phase = new_phase
         self.phases[self.cur_phase].on_phase_start()
@@ -116,9 +117,11 @@ class StyleTrainer:
             
         for i in range(self.config.style.rounds):
             _add_phase(StylizationPhase,     f"Stylization {i}", self.config.style.style_iter)
-            _add_phase(GeometryProtectPhase, f"Geometry    {i}", self.config.style.geometry_iter)
+            # _add_phase(GeometryProtectPhase, f"Geometry    {i}", self.config.style.geometry_iter)
         
         _add_phase(PostProcessPhase, "Post Process", self.config.style.postpreprocess_iter)
+        
+        print(phase_uid, phase_iter)
         
 
     def _init_observers(self):
