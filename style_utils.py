@@ -3,7 +3,7 @@ import torch
 import numpy as np
 import cv2
 import os
-from gaussian_renderer import render
+from gs.gaussian_renderer import render
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Dict
 
@@ -190,40 +190,24 @@ def render_ctx(ctx, path="./debug"):
         render_depth_or_mask_images(os.path.join(depth_path, f"{int(i):04d}.png"), ctx.depth_images[0])
 
 
-def render_viewpoint(self, if_depth, if_mask, if_original, if_render, path="./debug"):
+def render_viewpoint(trainer):
     
-    depth_path = os.path.join(path, "depth/")
-    mask_path = os.path.join(path, "mask/")
-    original_path = os.path.join(path, "original/")
-    render_path = os.path.join(path, "render/")
+    depth_path = os.path.join(trainer.config.model.model_path, "depth/")
+    render_path = os.path.join(trainer.config.model.model_path, "render/")
     
     os.makedirs(depth_path, exist_ok=True)
-    os.makedirs(mask_path, exist_ok=True)
-    os.makedirs(original_path, exist_ok=True)
     os.makedirs(render_path, exist_ok=True)
     
-    for i, view in enumerate(self.viewpoint_stack):
-        images_pkgs = render(view, self.scene.gaussians, self.pipe, self.bg)
+    for i, view in enumerate(trainer.scene.getTrainCameras()):
+        images_pkgs = trainer.get_render_pkgs(view)
         
-        if if_depth:
-            depth_image = images_pkgs["depth"]
-            cur_depth_path = os.path.join(depth_path, f"{int(i):04d}.png")
-            render_depth_or_mask_images(cur_depth_path, depth_image)
-        
-        if if_mask:
-            mask_image = self.scene_masks[i]
-            cur_mask_path = os.path.join(mask_path, f"{int(i):04d}.png")
-            render_depth_or_mask_images(cur_mask_path, mask_image)
+        depth_image = images_pkgs["depth"]
+        cur_depth_path = os.path.join(depth_path, f"{int(i):04d}.png")
+        render_depth_or_mask_images(cur_depth_path, depth_image)
             
-        if if_original:
-            original_image = view.original_image
-            cur_original_path = os.path.join(original_path, f"{int(i):04d}.png")
-            render_RGBcolor_images(cur_original_path, original_image)
-            
-        if if_render:
-            render_image = images_pkgs["render"]
-            cur_render_path = os.path.join(render_path, f"{int(i):04d}.png")
-            render_RGBcolor_images(cur_render_path, render_image)
+        render_image = images_pkgs["render"]
+        cur_render_path = os.path.join(render_path, f"{int(i):04d}.png")
+        render_RGBcolor_images(cur_render_path, render_image)
             
             
 def generate_transformation_matrix(angle, shear_x, shear_y, image_width, image_height):

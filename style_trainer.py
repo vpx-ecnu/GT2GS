@@ -1,11 +1,11 @@
 # style_trainer.py
 from typing import Dict, List
 import torch
-from scene import GaussianModel, Scene
+from gs.scene import GaussianModel, Scene
 from style_config import ConfigManager
 from style_utils import CUDATimer
 
-from gaussian_renderer import network_gui, render
+from gs.gaussian_renderer import network_gui, render
 from style_observer import TrainingMetrics
 from style_phase import StylizationPhase, PreProcessPhase, GeometryProtectPhase, PostProcessPhase
 from style_observer import TrainingObserver, ProgressTracker, CheckpointSaver

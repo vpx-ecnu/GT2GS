@@ -1,13 +1,17 @@
 # style_main.py
+import sys
+sys.path.append("./gs/")
+
 import torch
 from style_config import parse_args
-from utils.general_utils import safe_state
-from gaussian_renderer import network_gui
+from gs.utils.general_utils import safe_state
+from gs.gaussian_renderer import network_gui
 from style_trainer import StyleTrainer
 import random
 import numpy as np
 import wandb
 from datetime import datetime
+from style_utils import render_viewpoint
 
 def main():
     
@@ -30,6 +34,8 @@ def main():
     
     trainer = StyleTrainer(config)
     trainer.train()
+    
+    render_viewpoint(trainer)
 
 
 if __name__ == "__main__":

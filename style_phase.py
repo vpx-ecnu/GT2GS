@@ -6,7 +6,7 @@ import time
 from random import randint
 import torch
 from style_utils import *
-from utils.loss_utils import l1_loss, ssim
+from gs.utils.loss_utils import l1_loss, ssim
 from style_loss import *
 from torch.linalg import svd, det 
 import wandb
@@ -23,7 +23,9 @@ class TrainingPhase(ABC):
         self.uid = uid
         
     def update(self, iteration, loss):
-        
+        if (self.name.startswith("Stylization") or self.name.startswith("Post")):
+            # concat_and_save_images("./image.jpg", self.trainer.ctx.original_image, render_image, curr_depth, render_depth)  
+            render_RGBcolor_images("./image.jpg", self.render_pkg["render"])
         loss.backward()
         self._densification(iteration)
         self.trainer.gaussians.optimizer.step()
@@ -62,7 +64,7 @@ class ProcessPhase(TrainingPhase):
             Ll1 = l1_loss(render_image, original_image)
             ssim_val = ssim(render_image, original_image)
             
-            concat_and_save_images("./image.jpg", original_image, render_image, curr_depth, render_depth)  
+            # concat_and_save_images("./image.jpg", original_image, render_image, curr_depth, render_depth)  
             loss = (
                 (1.0 - self.trainer.config.opt.lambda_dssim) * Ll1 + 
                 self.trainer.config.opt.lambda_dssim * (1.0 - ssim_val)
@@ -267,6 +269,8 @@ class StylizationPhase(TrainingPhase):
     def _densification(self, iteration: int):
         if not self.trainer.config.style.density:
             return 
+        delta_iteration = iteration - self.start_iter
+        
         gaussians = self.trainer.gaussians
         opt = self.trainer.config.opt
         scene = self.trainer.scene
@@ -279,7 +283,7 @@ class StylizationPhase(TrainingPhase):
         gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
         gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
             
-        if (iteration - self.start_iter) % opt.style_densification_interval == 0:
+        if delta_iteration % opt.style_densification_interval == 0 and delta_iteration != 0:
             # threshold = torch.quantile(radii[visibility_filter].float(), 0.10)
             
             # big_mask = torch.logical_and(visibility_filter, radii > threshold)
@@ -604,6 +608,7 @@ class StylizationPhase(TrainingPhase):
                     # TODO：计算其仿射变换矩阵（由于错切难以处理，可以考虑简化为只有旋转）(done)
                     # TODO: 用仿射变换矩阵修改先验矩阵(done-原始角度+新角度)
                     
+                    # TODO: 解开注释
                     # rotation = compute_rotation_angles(pos_pre, pos_float, fh, fw)
                     # prior_matrix = prior_matrix + rotation
                     
@@ -651,11 +656,12 @@ class StylizationPhase(TrainingPhase):
             shape_loss = (top2_values[:, 0] / top2_values[:, 1]).mean()
             imgtv_loss = get_imgtv_loss(render_image)
             
-            concat_and_save_images("./image.jpg", curr_image, render_image, curr_depth, render_depth)
+            # concat_and_save_images("./image.jpg", curr_image, render_image, curr_depth, render_depth)
 
             
             
             loss = (
+                # Todo: check consistent_loss
                 self.trainer.config.style.lambda_consistent_loss * consistent_loss
                 + self.trainer.config.style.lambda_prior_loss * prior_loss
                 + self.trainer.config.style.lambda_content_loss * content_loss

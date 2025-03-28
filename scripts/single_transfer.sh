@@ -10,13 +10,21 @@
 python style_main.py \
     -s /Datasets/preprocessed_data/llff/$1 \
     -o /Datasets/radegs_0/llff/$1 \
-    --style_image /Datasets/styles/texture/$2 \
+    --style_image ./styles/$2 \
     --color_transfer \
     --gta_type clip \
-    --prior \
     --density \
-    --need_log \
+    # --prior \
+    # --need_log \
     # --style_iter 10 \
     # --round 60 \
     # --style_iter 10
+
+# python style_main.py \
+#     -s /Datasets/preprocessed_data/llff/$1 \
+#     -o /Datasets/radegs_0/llff/$1 \
+#     --style_image /Datasets/styles/texture/$2 \
+#     --color_transfer \
+#     --gta_type clip \
+#     --density \
 
