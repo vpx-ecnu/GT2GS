@@ -192,8 +192,8 @@ def render_ctx(ctx, path="./debug"):
 
 def render_viewpoint(trainer):
     
-    depth_path = os.path.join(trainer.config.model.model_path, "depth/")
-    render_path = os.path.join(trainer.config.model.model_path, "render/")
+    depth_path = os.path.join(trainer.config.style.stylized_model_path, "depth/")
+    render_path = os.path.join(trainer.config.style.stylized_model_path, "render/")
     
     os.makedirs(depth_path, exist_ok=True)
     os.makedirs(render_path, exist_ok=True)

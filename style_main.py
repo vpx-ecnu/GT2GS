@@ -35,7 +35,7 @@ def main():
     trainer = StyleTrainer(config)
     trainer.train()
     
-    render_viewpoint(trainer)
+    # render_viewpoint(trainer)
 
 
 if __name__ == "__main__":

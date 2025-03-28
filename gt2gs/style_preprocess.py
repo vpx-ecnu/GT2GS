@@ -141,7 +141,7 @@ def _init_add_gaussians(trainer):
     new_gaussian.max_radii2D = torch.zeros((new_gaussian.get_xyz.shape[0]), device="cuda")
     
     
-    point_cloud_path = os.path.join(trainer.config.model.model_path, "point_cloud/iteration_{}".format(1))
+    point_cloud_path = os.path.join(trainer.config.style.stylized_model_path, "point_cloud/iteration_{}".format(1))
     new_gaussian.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"))
     
     # new_gaussian_colors = torch.cat(new_gaussian_colors)
