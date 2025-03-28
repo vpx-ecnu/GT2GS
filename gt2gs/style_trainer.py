@@ -2,14 +2,14 @@
 from typing import Dict, List
 import torch
 from gs.scene import GaussianModel, Scene
-from style_config import ConfigManager
-from style_utils import CUDATimer
+from gt2gs.style_config import ConfigManager
+from gt2gs.style_utils import CUDATimer
 
 from gs.gaussian_renderer import network_gui, render
-from style_observer import TrainingMetrics
-from style_phase import StylizationPhase, PreProcessPhase, GeometryProtectPhase, PostProcessPhase
-from style_observer import TrainingObserver, ProgressTracker, CheckpointSaver
-from style_preprocess import preprocess
+from gt2gs.style_observer import TrainingMetrics
+from gt2gs.style_phase import StylizationPhase, PreProcessPhase, GeometryProtectPhase, PostProcessPhase
+from gt2gs.style_observer import TrainingObserver, ProgressTracker, CheckpointSaver
+from gt2gs.style_preprocess import preprocess
 
 
 class StyleTrainer:

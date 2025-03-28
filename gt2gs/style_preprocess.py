@@ -1,18 +1,18 @@
 # style_preprocess.py
 from dataclasses import dataclass 
 import torch 
-from gaussian_renderer import render
-from style_utils import *
+from gs.gaussian_renderer import render
+from gt2gs.style_utils import *
 import os
 
 from icecream import ic 
 import numpy as np
-from utils.general_utils import inverse_sigmoid
+from gs.utils.general_utils import inverse_sigmoid
 from torch import nn
 import os
 from simple_knn._C import distCUDA2
-from scene.gaussian_model import GaussianModel
-from style_utils import render_depth_or_mask_images
+from gs.scene.gaussian_model import GaussianModel
+from gt2gs.style_utils import render_depth_or_mask_images
         
 def _init_scene_images(trainer):
     

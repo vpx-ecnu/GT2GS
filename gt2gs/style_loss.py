@@ -8,7 +8,7 @@ import numpy as np
 import cv2
 from PIL import Image
 from dataclasses import dataclass
-from style_utils import *
+from gt2gs.style_utils import *
 
 # @dataclass
 # class LossContext:

@@ -5,9 +5,9 @@ from typing import Dict
 import time 
 from random import randint
 import torch
-from style_utils import *
+from gt2gs.style_utils import *
 from gs.utils.loss_utils import l1_loss, ssim
-from style_loss import *
+from gt2gs.style_loss import *
 from torch.linalg import svd, det 
 import wandb
     

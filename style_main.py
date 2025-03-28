@@ -3,15 +3,15 @@ import sys
 sys.path.append("./gs/")
 
 import torch
-from style_config import parse_args
+from gt2gs.style_config import parse_args
 from gs.utils.general_utils import safe_state
 from gs.gaussian_renderer import network_gui
-from style_trainer import StyleTrainer
+from gt2gs.style_trainer import StyleTrainer
 import random
 import numpy as np
 import wandb
 from datetime import datetime
-from style_utils import render_viewpoint
+from gt2gs.style_utils import render_viewpoint
 
 def main():
     
