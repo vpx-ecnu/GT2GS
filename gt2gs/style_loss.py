@@ -180,6 +180,8 @@ def prior_feat_replace(A, B, Mat, p_mask, p_feats, p_Mat):
     
 def content_loss_fn(render_feats_list, scene_feats_list):
     content_loss = 0
+    coefficient = 1
     for (render_feat, scene_feat) in zip(render_feats_list, scene_feats_list):
-        content_loss += torch.mean((render_feat - scene_feat) ** 2)
+        content_loss += coefficient * torch.mean((render_feat - scene_feat) ** 2)
+        coefficient /= 10
     return content_loss

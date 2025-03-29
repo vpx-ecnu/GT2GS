@@ -73,7 +73,7 @@ class StyleConfig(Serializable):
     density: bool = field(False, action="store_true")
     lambda_consistent_loss: float = 2
     lambda_prior_loss: float = 2
-    lambda_content_loss: float = 0.0005
+    lambda_content_loss: float = 0.005
     lambda_imgtv_loss: float = 0.02
     lambda_depth_loss: float = 0.01
     lambda_shape_loss: float = 0.1
