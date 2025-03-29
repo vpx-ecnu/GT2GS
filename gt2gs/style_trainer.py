@@ -21,11 +21,11 @@ class StyleTrainer:
         self.cur_phase = -1
         
         self._init_components()
-        self._init_phases()
-        preprocess(self)
         
     def train(self):
         
+        preprocess(self)
+        self._init_phases()
         self._init_observers()
         
         for self.iteration in range(1, self.total_iterations + 1):

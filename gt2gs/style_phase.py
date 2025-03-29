@@ -10,7 +10,7 @@ from gs.utils.loss_utils import l1_loss, ssim
 from gt2gs.style_loss import *
 from torch.linalg import svd, det 
 import wandb
-    
+from gt2gs.style_preprocess import _init_depth_images
 
 class TrainingPhase(ABC):
     def __init__(self, trainer, uid, name, start_iter, end_iter):
@@ -53,7 +53,7 @@ class ProcessPhase(TrainingPhase):
             self.render_pkg = self.trainer.get_render_pkgs(viewpoint_cam)
             render_image = self.render_pkg["render"]
             render_depth = self.render_pkg["depth"]
-            original_image = self.trainer.ctx.original_images[viewpoint_cam.uid]
+            original_image = self.trainer.ctx.scene_images[viewpoint_cam.uid]
             curr_depth = self.trainer.ctx.depth_images[viewpoint_cam.uid]
             
             # render_depth = self.render_pkg["depth"]
@@ -121,129 +121,31 @@ class PreProcessPhase(ProcessPhase):
             
     @torch.no_grad
     def on_phase_end(self):
-        self.trainer.warper = Warper()
-        self.trainer.feat_extractor = FeatureExtractor()
-        self._init_original_feats()
-        self._init_style_feat()
+        # self.trainer.feature_extractor = FeatureExtractor()
+        # self._init_original_feats()
+        # self._init_style_feat()
+        _init_depth_images(self.trainer)
         
         
-        viewpoint_stack = self.trainer.scene.getTrainCameras()
-        self.trainer.ctx.depth_images = []
-        # self.trainer.ctx.original_images = []
+        # viewpoint_stack = self.trainer.scene.getTrainCameras()
+        # self.trainer.ctx.depth_images = []
         
-        # colmap maybe change image's size
-        min_h, min_w = 10000, 10000
-        for i, view in enumerate(viewpoint_stack):
-            min_h = min(min_h, view.image_height)
-            min_w = min(min_w, view.image_width)
-        self.trainer.ctx.image_width = min_w
-        self.trainer.ctx.image_height = min_h
-        
-        for _, view in enumerate(viewpoint_stack):
-            depth_image = self.trainer.get_render_pkgs(view)["depth"]
-            self.trainer.ctx.depth_images.append(depth_image.squeeze().detach())
+        # for _, view in enumerate(viewpoint_stack):
+        #     depth_image = self.trainer.get_render_pkgs(view)["depth"]
+        #     self.trainer.ctx.depth_images.append(depth_image.squeeze().detach())
             
-        self.trainer.ctx.depth_images = torch.stack(self.trainer.ctx.depth_images).to(device=self.trainer.device)
+        # self.trainer.ctx.depth_images = torch.stack(self.trainer.ctx.depth_images).to(device=self.trainer.device)
  
-    def _init_original_feats(self):
-        self.trainer.ctx.original_feats = []
+    # def _init_original_feats(self):
+    #     self.trainer.ctx.original_feats = []
         
-        for i, original_image in enumerate(self.trainer.ctx.original_images):
-            self.trainer.ctx.original_feats.append(self.trainer.feat_extractor.get_features(original_image))
+    #     for i, original_image in enumerate(self.trainer.ctx.scene_images):
+    #         self.trainer.ctx.original_feats.append(self.trainer.feature_extractor(original_image))
     
-        self.trainer.ctx.original_feats = torch.stack(self.trainer.ctx.original_feats)
+    #     self.trainer.ctx.original_feats = torch.stack(self.trainer.ctx.original_feats)
     
-    def _init_style_feat(self):
-        
-        self.trainer.ctx.style_feat = []
-        self.trainer.ctx.style_matrix = []
-        
-        style_image = self.trainer.ctx.style_image
-        _, style_img_width, style_img_height = style_image.shape
-        
-        # TODO: 
-        # 1. 考虑用clip替换聚类的pipeline
-        # 2. 对齐ref-npr的setting，可以有一个完全先验的特征图
-        # 3. ref-npr做实验，验证没有rgb loss，只有特征图loss情况下的结果
-        for i in range(0, 360):
-            # 先假设错切参数为0，旋转角度由i得到
-            Hx = Hy = 0
-            # TODO: 要保证是float格式
-            theta = i * 1.0
-            
-            # 获得线性变换矩阵（包括旋转角度和错切参数）
-            M, M_parameter = generate_transformation_matrix(theta, Hx, Hy, style_img_width, style_img_height)
-            
-            # 根据i获得增强后的图片
-            # new_image = F.affine(style_image, theta, [0,9], 1.0, [Hx, Hy], resample=Image.BICUBIC)
-            new_image = tensor_img_transformation(style_image, M, i)
-            
-            # extract vgg feature
-            # self.style_feats.append(self.get_feats(style_image.unsqueeze(0)))
-            img_feats = self.trainer.feat_extractor.get_features(new_image, False)
-            # print(img_feats.shape)
-            ######################################################################
-            # 不聚类
-            if self.trainer.config.style.gta_type == "default":
-                c, h, w = img_feats.shape
-                img_feats = img_feats.view(c, -1)
-                _, num_clusters = img_feats.shape
-            
-            ######################################################################
-            # 聚类
-            if self.trainer.config.style.gta_type == "kmeans":
-                # 处理为k-means可用形式
-                c, h, w = img_feats.shape
-                img_feats_flat = img_feats.permute(1, 2, 0).reshape(-1, c)
-                img_feats_np = img_feats_flat.cpu().numpy()
-                
-                # k-means
-                # TODO: 超参调整
-                num_clusters = 40
-                kmeans = KMeans(n_clusters=num_clusters, random_state=42, max_iter=300)
-                kmeans.fit(img_feats_np)
-                
-                # 获取每个像素对应的聚类标签
-                cluster_labels = kmeans.labels_  # [h * w]
-
-                # 获取聚类中心
-                cluster_centers = kmeans.cluster_centers_  # [num_clusters, c]
-
-                # 将每个像素替换为其所属聚类的中心向量
-                discretized_feats_flat = torch.tensor(cluster_centers, device=img_feats.device)
-
-                # 将特征还原回原始形状 [c, -1]
-                img_feats = discretized_feats_flat.view(-1, c).permute(1, 0)
-            
-            ######################################################################
-            # 裁剪
-            # TODO: 后面可以手动控制变量范围
-            if self.trainer.config.style.gta_type == "clip":
-                c, h, w = img_feats.shape
-                target_h = 8
-                target_w = 8
-                
-                start_h = (h - target_h) // 2
-                start_w = (w - target_w) // 2
-                
-                cropped_tensor = img_feats[:, start_h:start_h + target_h, start_w:start_w + target_w]
-                # view必须张量在内存中连续，所以用reshape
-                img_feats = cropped_tensor.reshape(c, -1)
-                _, num_clusters = img_feats.shape
-            
-            # 将新特征组加入总特征集合（当前未考虑深度分组）
-            
-            self.trainer.ctx.style_feat.append(img_feats)
-            
-            # M_tensor = torch.from_numpy(M_parameter)
-            # 目前先只存了旋转角度，用于求loss，而不是
-            M_tensor = torch.tensor(theta)
-            matrix_list = torch.stack([M_tensor] * num_clusters).to("cuda").unsqueeze(0)
-            self.trainer.ctx.style_matrix.append(matrix_list)
-
-        
-        self.trainer.ctx.style_feat = torch.cat(self.trainer.ctx.style_feat, dim=1)
-        self.trainer.ctx.style_matrix = torch.cat(self.trainer.ctx.style_matrix, dim=1)
+    # def _init_style_feat(self):
+    #     pass
         
 
 class PostProcessPhase(ProcessPhase):
@@ -251,13 +153,17 @@ class PostProcessPhase(ProcessPhase):
     @torch.no_grad
     def on_phase_start(self):
         
-        self.viewpoint_stack = self.trainer.scene.getTrainCameras().copy()
-        self.viewpoint_len = len(self.viewpoint_stack)
-        for i in range(0, self.viewpoint_len):
-            curr_cam = self.viewpoint_stack[i]
-            self.render_pkg = self.trainer.get_render_pkgs(curr_cam)
-            render_img = self.render_pkg["render"]
-            self.trainer.ctx.original_images[curr_cam.uid] = render_img
+        # self.viewpoint_stack = self.trainer.scene.getTrainCameras().copy()
+        # self.viewpoint_len = len(self.viewpoint_stack)
+        # for i in range(0, self.viewpoint_len):
+        #     curr_cam = self.viewpoint_stack[i]
+        #     self.render_pkg = self.trainer.get_render_pkgs(curr_cam)
+        #     render_img = self.render_pkg["render"]
+        #     self.trainer.ctx.scene_images[curr_cam.uid] = render_img
+        viewpoint_stack = self.trainer.scene.getTrainCameras()
+        for i, view in enumerate(viewpoint_stack):
+            pkg = self.trainer.get_render_pkgs(view)
+            self.trainer.ctx.scene_images[i] = pkg["render"].detach()
             
         if self.config.style.color_transfer:
             color_transfer(self.trainer.ctx)
@@ -302,10 +208,10 @@ class StylizationPhase(TrainingPhase):
         self.prior_target = None
         self.prior_matrix = None
         self.warper = self.trainer.warper
-        self.feat_extractor = self.trainer.feat_extractor
-        self.original_feats = self.trainer.ctx.original_feats
-        self.style_feat = self.trainer.ctx.style_feat
-        self.style_matrix = self.trainer.ctx.style_matrix
+        self.feature_extractor = self.trainer.feature_extractor
+        # self.original_feats = self.trainer.ctx.original_feats
+        # self.style_feat = self.trainer.ctx.style_feat
+        # self.style_matrix = self.trainer.ctx.style_matrix
         if self.trainer.config.style.no_grad:
             self.trainer.gaussians._xyz.requires_grad_(False)
             self.trainer.gaussians._scaling.requires_grad_(False)
@@ -410,91 +316,61 @@ class StylizationPhase(TrainingPhase):
             
             return C
         
-        # def compute_rotation_angles(A, B, fh, fw):
-        #     h, w, _ = A.shape
-            
-        #     # pool_size = 8
-        #     pool_size = h // fh
-            
-        #     C = torch.zeros(1, fh, fw, device=A.device, dtype=A.dtype)
-            
-        #     for x in range(fh):
-        #             for y in range(fw):
-        #                 # 提取对应区域点对
-        #                 # A_S = A[x * pool_size : (x + 1) * pool_size,
-        #                 #         y * pool_size : (y + 1) * pool_size, :]
-        #                 # B_S = B[x * pool_size : (x + 1) * pool_size,
-        #                 #         y * pool_size : (y + 1) * pool_size, :]
-                        
-        #                 # 只提取角点进行加速
-        #                 top_left = (x * pool_size, y * pool_size)
-        #                 top_right = (x * pool_size, (y + 1) * pool_size - 1)
-        #                 bottom_left = ((x + 1) * pool_size - 1, y * pool_size)
-        #                 bottom_right = ((x + 1) * pool_size - 1, (y + 1) * pool_size - 1)
-                        
-        #                 # 从 A 和 B 中提取四个角点
-        #                 A_S = torch.stack([
-        #                     A[top_left[0], top_left[1]],
-        #                     A[top_right[0], top_right[1]],
-        #                     A[bottom_left[0], bottom_left[1]],
-        #                     A[bottom_right[0], bottom_right[1]]
-        #                 ])  # 形状 (4, 2)
-                        
-        #                 B_S = torch.stack([
-        #                     B[top_left[0], top_left[1]],
-        #                     B[top_right[0], top_right[1]],
-        #                     B[bottom_left[0], bottom_left[1]],
-        #                     B[bottom_right[0], bottom_right[1]]
-        #                 ])
-                        
-                        
-                        
-        #                 # 不考虑平移，考虑以中心进行的2*2变换
-        #                 mu_a = A_S.mean(dim=[0, 1])  # 形状 (2,)
-        #                 mu_b = B_S.mean(dim=[0, 1])
-                        
-        #                 A_centered = A_S - mu_a
-        #                 B_centered = B_S - mu_b
-                        
-        #                 # 估计矩阵
-        #                 H = (B_centered.reshape(-1, 2).t() @ A_centered.reshape(-1, 2))
-                        
-        #                 # SVD（分解旋转和缩放）
-        #                 U, S, Vh = svd(H)
-                        
-        #                 # 旋转矩阵
-        #                 R = U @ Vh.t()
-                        
-        #                 # 检查行列式，确保 R 是旋转矩阵（det=1）而非反射（det=-1）
-        #                 if det(R) < 0:
-        #                     U[:, -1] = -U[:, -1]
-        #                     R = U @ Vh.t()
-                        
-        #                 # 从旋转矩阵提取角度 theta
-        #                 theta = torch.atan2(R[1, 0], R[0, 0])
-                        
-        #                 C[0, x, y] = theta
-    
-        #     return C
-        
         last_cam, curr_cam = self._get_viewpoint_cam()
         
         with self.trainer.timer as timer:
             
             self.render_pkg = self.trainer.get_render_pkgs(curr_cam)
             render_image = self.render_pkg["render"]
-            curr_image = self.trainer.ctx.original_images[curr_cam.uid]
-            self.render_feat = self.feat_extractor.get_features(render_image)
+            curr_image = self.trainer.ctx.scene_images[curr_cam.uid]
+            
+            self.render_feat = self.feature_extractor(render_image)
+            curr_scene_features_mask = self.trainer.ctx.scene_features_mask_list[curr_cam.uid]
+            depth_clustering_num = self.trainer.config.style.depth_clustering_num
+            render_features_list = get_separated_list(self.render_feat, 
+                                                      curr_scene_features_mask,
+                                                      depth_clustering_num)
             
             
+            # Calculate depth loss
             render_depth = self.render_pkg["depth"]
             curr_depth = self.trainer.ctx.depth_images[curr_cam.uid]
             depth_loss = torch.mean((render_depth - curr_depth) ** 2)
             
             if self.trainer.config.style.prior == False or self.trainer.cur_phase % 2 == 0:
-
-                target_feat, target_matrix = nnfm_feat_replace(self.render_feat, self.style_feat, self.style_matrix)
+                
+                # style_features_list = self.trainer.ctx.style_features_list
+                # style_matrix_list = self.trainer.ctx.style_matrix_list
+                
+                
+                
+                # for i in range(self.trainer.config.style.depth_clustering_num):
+                #     pass
+                
+                # ic(render_image.shape)
+                # ic(self.render_feat.shape)
+                # for i, feat in enumerate(render_features_list):
+                #     ic(i, feat.shape)
+                fc, fh, fw = self.render_feat.shape
+                target_feat = torch.zeros((fc, fh, fw), device=self.render_feat.device)
+                target_matrix = torch.zeros((1, fh, fw), device=self.render_feat.device)
+                
+                for i in range(depth_clustering_num):
+                    mask = (curr_scene_features_mask == i)
+                    if mask.sum() == 0:
+                        continue
+                    
+                    style_feat = self.trainer.ctx.style_features_list[i]
+                    style_matrix = self.trainer.ctx.style_matrix_list[i]
+                    render_feat = render_features_list[i]
+                    
+                    # ic(style_feat.shape, style_matrix.shape, render_feat.shape, (curr_scene_features_mask == i).sum())
+                    curr_target_feat, curr_target_matrix = nnfm_feat_replace(render_feat, style_feat, style_matrix)
+                    target_feat[:, mask] = curr_target_feat
+                    target_matrix[:, mask] = curr_target_matrix
+                    
                 consistent_loss = 0
+                
             elif last_cam is None:
                 # TODO：一个更好的先验控制模块
                 # input: 给定reference图的特征图 or mask+对应区域特征图角度控制
@@ -510,41 +386,66 @@ class StylizationPhase(TrainingPhase):
                 #     target_feat = 
                 #     target_matrix = 
                     # pass
-
-
-                # self.feat_extractor.get_features(ref_image)
-                tmp_val = 64
-                A, A_mat = self.style_feat[:, :tmp_val], self.style_matrix[:, :tmp_val]
-                B, B_mat = self.style_feat[:, tmp_val*90:tmp_val*91], self.style_matrix[:, tmp_val*90:tmp_val*91]
+                    
+                theta = self.trainer.config.style.theta
+                # target_feat_list = []
+                # target_matrix_list = []
                 
-                _, fc, fh, fw = self.original_feats.shape
-                C = torch.zeros(fc, fh, fw).to("cuda")
-                matc, _ = A_mat.shape
-                C_mat = torch.zeros(matc, fh, fw).to("cuda")
-                A_indices = torch.randint(0, 5, (fc, fh // 2, fw))
-                for i in range(fc):
-                    C[i, :fh // 2, :] = A[i, A_indices[i]]
-                for i in range(matc):
-                    C_mat[i, :fh // 2, :] = A_mat[i, A_indices[i]]
                 
-                B_indices = torch.randint(0, 5, (fc, fh - fh // 2, fw))
-                for i in range(fc):
-                    C[i, fh // 2:, :] = B[i, B_indices[i]]
-                for i in range(matc):
-                    C_mat[i, fh // 2:, :] = B_mat[i, B_indices[i]]
-                # A_expanded = setA.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, fh, fw)
-                # B_expanded = setB.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, fh, fw)
-                # upper_half = A_expanded[:, :h//2, :, :]
-                # lower_half = B_expanded[:, h//2:, :, :]
-                # C = torch.cat((upper_half, lower_half), dim=1)
-                target_feat = C
-                target_matrix = C_mat
+                fc, fh, fw = self.render_feat.shape
+                target_feat = torch.zeros((fc, fh, fw), device=self.render_feat.device)
+                target_matrix = torch.zeros((1, fh, fw), device=self.render_feat.device)
+                
+                for i in range(depth_clustering_num):
+                    mask = (curr_scene_features_mask == i)
+                    if mask.sum() == 0:
+                        continue
+                    # self.feature_extractor(ref_image)
+                    style_feat = self.trainer.ctx.style_features_list[i]
+                    style_matrix = self.trainer.ctx.style_matrix_list[i]
+                    scene_features = self.trainer.ctx.scene_features_list[curr_cam.uid][i]
+                    
+                    tmp_val = style_feat.shape[1] // 360
+                    A = style_feat[:, theta * tmp_val: (theta + 1) * tmp_val]
+                    A_mat = style_matrix[:, theta * tmp_val: (theta + 1) * tmp_val]
+                    
+                    A_indices = torch.randint(0, tmp_val - 1, (fc, scene_features.shape[1]), device=style_feat.device)
+                    A_mat_indices = torch.randint(0, tmp_val - 1, (1, scene_features.shape[1]), device=style_feat.device)
+                    
+                    # ic(torch.gather(A, 1, A_indices).shape)
+                    target_feat[:, mask] = torch.gather(A, 1, A_indices)
+                    # ic(torch.gather(A_mat, 1, A_mat_indices).shape)
+                    # ic(mask.shape)
+                    target_matrix[:, mask] = torch.gather(A_mat, 1, A_mat_indices)
+                    
+                    
                 consistent_loss = 0
-                
+                # exit(0)
+                    # for i in range(fc):
+                    #     C[i, :] = A[i, A_indices[i]]
+                    # for i in range(matc):
+                    #     C_mat[i, :] = A_mat[i, A_mat_indices[i]]
+                        
+                    # assert (C == torch.gather(A, 1, A_indices)).all()
+                    # assert (C_mat == torch.gather(A_mat, 1, A_mat_indices)).all()
+                    
+                    # C = torch.gather(A, 1, A_indices)
+                    # C_mat = torch.gather(A_mat, 1, A_indices)
+                    
+                    # B_indices = torch.randint(0, 5, (fc, fh - fh // 2, fw))
+                    # for i in range(fc):
+                    #     C[i, fh // 2:, :] = B[i, B_indices[i]]
+                    # for i in range(matc):
+                    #     C_mat[i, fh // 2:, :] = B_mat[i, B_indices[i]]
+                    # A_expanded = setA.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, fh, fw)
+                    # B_expanded = setB.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, fh, fw)
+                    # upper_half = A_expanded[:, :h//2, :, :]
+                    # lower_half = B_expanded[:, h//2:, :, :]
+                    # C = torch.cat((upper_half, lower_half), dim=1)
             else:
                 
                 
-                last_image = self.trainer.ctx.original_images[last_cam.uid]
+                last_image = self.trainer.ctx.scene_images[last_cam.uid]
 
                 with torch.no_grad():
                     K = torch.from_numpy(last_cam.K.astype(np.float32)).unsqueeze(0)
@@ -567,8 +468,10 @@ class StylizationPhase(TrainingPhase):
                     trans_mask = (diff < threshold).float()
                 trans_image = trans_mask * warped_frame2 + (1 - trans_mask) * curr_image
                     
-                trans_feat = self.feat_extractor.get_features(trans_image)
-                
+                trans_feat = self.feature_extractor(trans_image)
+                # trans_feat_list = get_separated_list(trans_image, 
+                #                                      curr_scene_features_mask,
+                #                                      depth_clustering_num)
                 # TODO: 动态维护
                 consistent_loss = cos_distance(self.prior_target, trans_feat)
                     ############################
@@ -609,8 +512,8 @@ class StylizationPhase(TrainingPhase):
                     # TODO: 用仿射变换矩阵修改先验矩阵(done-原始角度+新角度)
                     
                     # TODO: 解开注释
-                    # rotation = compute_rotation_angles(pos_pre, pos_float, fh, fw)
-                    # prior_matrix = prior_matrix + rotation
+                    rotation = compute_rotation_angles(pos_pre, pos_float, fh, fw)
+                    prior_matrix = prior_matrix + rotation
                     
                     
                     # 获得先验mask, 构建特征图大小的mask
@@ -634,10 +537,53 @@ class StylizationPhase(TrainingPhase):
                 # 需要注意的是mask，即有先验才用先验，没有先验则和原来nnfm一样（除了if else如何有好的实现？， 应该是要修改求argmin的时候先验项的系数，mask为0时置0）
                     
                     # TODO: 动态维护；可切换分支（使用先验or不使用先验）
-                    target_feat, target_matrix = prior_feat_replace(
-                        self.render_feat, self.style_feat, self.style_matrix,
-                        prior_mask, prior_feats, prior_matrix
-                    )
+                    
+                    prior_mask_list = get_separated_list(prior_mask.unsqueeze(0), 
+                                                         curr_scene_features_mask,
+                                                         depth_clustering_num)
+                    prior_feature_list = get_separated_list(prior_feats, 
+                                                            curr_scene_features_mask,
+                                                            depth_clustering_num)
+                    prior_matrix_list = get_separated_list(prior_matrix, 
+                                                           curr_scene_features_mask,
+                                                           depth_clustering_num)
+                    
+                    fc, fh, fw = self.render_feat.shape
+                    target_feat = torch.zeros((fc, fh, fw), device=self.render_feat.device)
+                    target_matrix = torch.zeros((1, fh, fw), device=self.render_feat.device)
+                    
+                    # ic(prior_mask.shape, prior_feats.shape, prior_matrix.shape)
+                    # exit(0)
+                    for i in range(depth_clustering_num):
+                        mask = (curr_scene_features_mask == i)
+                        if mask.sum() == 0:
+                            continue
+                        
+                        style_feat = self.trainer.ctx.style_features_list[i]
+                        style_matrix = self.trainer.ctx.style_matrix_list[i]
+                        p_mask = prior_mask_list[i]
+                        p_feat = prior_feature_list[i]
+                        p_matrix = prior_matrix_list[i]
+                        
+                        render_feat = render_features_list[i]
+                        
+                        # ic(style_feat.shape, style_matrix.shape, render_feat.shape, (curr_scene_features_mask == i).sum())
+                        curr_target_feat, curr_target_matrix = prior_feat_replace(render_feat, 
+                                                                                  style_feat, 
+                                                                                  style_matrix,
+                                                                                  p_mask,
+                                                                                  p_feat, 
+                                                                                  p_matrix)
+                        target_feat[:, mask] = curr_target_feat
+                        target_matrix[:, mask] = curr_target_matrix
+                        
+                        
+                    
+                        # target_feat, target_matrix = (
+                        #     self.render_feat, self.style_feat, self.style_matrix,
+                        #     prior_mask, prior_feats, prior_matrix
+                        # )
+                    
             
                 # print("111:", target_feat.mean(), target_matrix.mean())
                 # exit(0)
@@ -649,8 +595,12 @@ class StylizationPhase(TrainingPhase):
             
                 
             self._update_target(curr_cam.uid, target_feat, target_matrix)
+            
             prior_loss = cos_distance(target_feat, self.render_feat)
-            content_loss = torch.mean((self.render_feat - self.original_feats[curr_cam.uid]) ** 2) 
+            content_loss = content_loss_fn(render_features_list, 
+                                           self.trainer.ctx.scene_features_list[curr_cam.uid])
+            
+            # content_loss = torch.mean((self.render_feat - self.original_feats[curr_cam.uid]) ** 2) 
             
             top2_values, _ = torch.topk(self.trainer.gaussians.get_scaling, k=2, dim=1) 
             shape_loss = (top2_values[:, 0] / top2_values[:, 1]).mean()
@@ -708,7 +658,7 @@ class GeometryProtectPhase(TrainingPhase):
     def on_phase_start(self):
         self.trainer.gaussians._features_dc.requires_grad_(False)
         self.trainer.gaussians._features_rest.requires_grad_(False)
-        self.feat_extractor = self.trainer.feat_extractor
+        self.feature_extractor = self.trainer.feature_extractor
         # if self.config.style.color_transfer:
         #     color_transfer(self.trainer.ctx)
 
@@ -730,13 +680,13 @@ class GeometryProtectPhase(TrainingPhase):
             
             self.render_pkg = self.trainer.get_render_pkgs(viewpoint_cam)
             render_image = self.render_pkg["render"]
-            curr_image = self.trainer.ctx.original_images[viewpoint_cam.uid]
+            curr_image = self.trainer.ctx.scene_images[viewpoint_cam.uid]
             render_depth = self.render_pkg["depth"]
             curr_depth = self.trainer.ctx.depth_images[viewpoint_cam.uid]
             
             depth_loss = torch.mean((render_depth - curr_depth) ** 2)
-            render_feat = self.feat_extractor.get_features(render_image)
-            content_feat = self.feat_extractor.get_features(curr_image)
+            render_feat = self.feature_extractor(render_image)
+            content_feat = self.feature_extractor(curr_image)
             content_loss = torch.mean((render_feat - content_feat) ** 2) 
             
             # render_depth = self.render_pkg["depth"]

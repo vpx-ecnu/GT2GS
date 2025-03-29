@@ -6,7 +6,8 @@ import os
 from gs.gaussian_renderer import render
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Dict
-
+from icecream import ic
+from sklearn.cluster import KMeans
 import torch.nn.functional as F
     
     
@@ -23,13 +24,21 @@ class StyleContext:
     image_width: int = None
     image_height: int = None
     
-    original_images: Optional[torch.Tensor] = None  # [N, C, H, W]
+    scene_images: Optional[torch.Tensor] = None  # [N, C, H, W]
     style_image: Optional[torch.Tensor] = None  # [C, H, W]
     depth_images: Optional[torch.Tensor] = None # [N, C, H, W]
     
     original_feats: Optional[torch.Tensor] = None # [N, C_feature, H//4, W//4]
     style_feats: Optional[torch.Tensor] = None
     style_matrix: Optional[torch.Tensor] = None
+    
+    
+    style_features_list: list[torch.Tensor] = None
+    style_matrix_list: list[torch.Tensor] = None
+    
+    scene_masks: Optional[torch.Tensor] = None
+    scene_features_list: list[list[torch.Tensor]] = None
+    scene_features_mask_list: list[torch.Tensor] = None
     
     # project: Dict[Tuple, ProjectContext] = None
     # scene_mask: Optional[torch.Tensor] = None
@@ -104,7 +113,7 @@ def color_transfer(ctx):
         color_tf[:3, 3:4] = tmp_vec.T
         return image_set, color_tf
     
-    original_pixels = ctx.original_images.permute(0, 2, 3, 1)
+    original_pixels = ctx.scene_images.permute(0, 2, 3, 1)
     original_size = original_pixels.size()
     original_pixels = original_pixels.reshape(-1, 3)
     
@@ -112,20 +121,28 @@ def color_transfer(ctx):
     
     color_transfered_pixels, color_tf = match_colors(original_pixels, style_pixels)
     
-    ctx.original_images = color_transfered_pixels.reshape(*original_size)
-    ctx.original_images = ctx.original_images.permute(0, 3, 1, 2)
+    ctx.scene_images = color_transfered_pixels.reshape(*original_size)
+    ctx.scene_images = ctx.scene_images.permute(0, 3, 1, 2)
     
     
     
 def render_depth_or_mask_images(path, image):
     
+    path_dir = os.path.dirname(path)
+    if not os.path.exists(path_dir):
+        os.makedirs(path_dir)
+    
     image = image.detach().cpu().numpy().squeeze()
     depth_map_normalized = cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX)
     depth_map_normalized = np.uint8(depth_map_normalized)
-    # depth_map_colored = cv2.applyColorMap(depth_map_normalized, cv2.COLORMAP_JET)
+    depth_map_normalized = cv2.applyColorMap(depth_map_normalized, cv2.COLORMAP_JET)
     cv2.imwrite(path, depth_map_normalized)
     
 def render_RGBcolor_images(path, image):
+    
+    path_dir = os.path.dirname(path)
+    if not os.path.exists(path_dir):
+        os.makedirs(path_dir)
     
     image = image.detach().permute(1, 2, 0).clamp(min=0.0, max=1.0).cpu().numpy()
     image = cv2.cvtColor((image * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
@@ -184,8 +201,8 @@ def render_ctx(ctx, path="./debug"):
     os.makedirs(depth_path, exist_ok=True)
     os.makedirs(original_path, exist_ok=True)
     
-    for i in range(ctx.original_images.shape[0]):
-        render_RGBcolor_images(os.path.join(original_path, f"{int(i):04d}.png"), ctx.original_images[0])
+    for i in range(ctx.scene_images.shape[0]):
+        render_RGBcolor_images(os.path.join(original_path, f"{int(i):04d}.png"), ctx.scene_images[0])
     for i in range(ctx.depth_images.shape[0]):
         render_depth_or_mask_images(os.path.join(depth_path, f"{int(i):04d}.png"), ctx.depth_images[0])
 
@@ -281,7 +298,7 @@ def center_crop(image, crop_size):
     # 执行裁剪
     cropped_image = image[start_y:start_y + crop_size[1], start_x:start_x + crop_size[0]]
     
-    cropped_image = cv2.resize(cropped_image, (256, 256), interpolation=cv2.INTER_LANCZOS4)
+    cropped_image = cv2.resize(cropped_image, (min(h, w), min(h, w)), interpolation=cv2.INTER_LANCZOS4)
     return cropped_image
     
 def tensor_img_transformation(tensor_image, transformation_matrix, idx):
@@ -290,11 +307,16 @@ def tensor_img_transformation(tensor_image, transformation_matrix, idx):
     
     # Get image size
     rows, cols, _ = image_numpy.shape
-    
+    # ic(rows, cols)
     # Apply the affine transformation using the top 2x3 part of the transformation matrix
     affine_matrix = transformation_matrix[:2, :]
     transformed_image = cv2.warpAffine(image_numpy, affine_matrix, (cols, rows), flags=cv2.INTER_LANCZOS4)
-    transformed_image = center_crop(transformed_image, (int(cols / 1.3), int(rows / 1.3)))
+    # ic(transformed_image.shape)
+    
+    new_size = int(min(rows, cols) / 1.414)
+    
+    transformed_image = center_crop(transformed_image, (new_size, new_size))
+    # render_RGBcolor_images("./debug/rotate.jpg", torch.from_numpy(transformed_image).permute(2, 0, 1))
     
     # Convert back to Tensor and normalize
     transformed_tensor = torch.from_numpy(transformed_image).permute(2, 0, 1).float().to(tensor_image.device)
@@ -700,3 +722,137 @@ class Warper:
         else:
             device = torch.device('cpu')
         return device
+    
+    
+def normalize_depth_to_uint8(depth_tensor):
+    
+    min_val = depth_tensor.min()
+    max_val = depth_tensor.max()
+    
+    normalized = (depth_tensor - min_val) / (max_val - min_val + 1e-6)
+    normalized = torch.clamp(normalized, 0, 1)
+    
+    uint8_depth = (normalized * 255).to(torch.uint8)
+    
+    return uint8_depth
+
+def labels_downscale(labels, new_dim):
+    """
+    Downscales the labels to a new dimension.
+
+    @param labels: Tensor of labels. Shape: [H, W]
+    @param new_dim: Tuple of new dimensions (NH, NW)
+    @return: Downscaled labels
+    """
+    H, W = labels.shape
+    NH, NW = new_dim
+    r_indices = torch.linspace(0, H-1, NH).long()
+    c_indices = torch.linspace(0, W-1, NW).long()
+    return labels[r_indices[:, None], c_indices]
+
+def get_separated_list(pixels, mask, num_classes):
+    separated_list = []
+    for i in range(num_classes):
+        separated_list.append(pixels[:, mask == i])
+    return separated_list
+
+@torch.no_grad
+def get_enhanced_style_features(trainer, style_image):
+    
+    enhanced_style_features = []
+    style_matrix = []
+    
+    _, style_img_width, style_img_height = style_image.shape
+    # ic(style_img_width, style_img_height)
+    # TODO: 
+    # 1. 考虑用clip替换聚类的pipeline
+    # 2. 对齐ref-npr的setting，可以有一个完全先验的特征图
+    # 3. ref-npr做实验，验证没有rgb loss，只有特征图loss情况下的结果
+    for i in range(0, 360):
+        # if (i != 30):
+        #     continue
+        # 先假设错切参数为0，旋转角度由i得到
+        Hx = Hy = 0
+        # TODO: 要保证是float格式
+        theta = i * 1.0
+        
+        # 获得线性变换矩阵（包括旋转角度和错切参数）
+        M, M_parameter = generate_transformation_matrix(theta, Hx, Hy, style_img_width, style_img_height)
+        # ic(M.shape)
+        # 根据i获得增强后的图片
+        # new_image = F.affine(style_image, theta, [0,9], 1.0, [Hx, Hy], resample=Image.BICUBIC)
+        new_image = tensor_img_transformation(style_image, M, i)
+        # ic(new_image.shape)
+        # extract vgg feature
+        # self.style_feats.append(self.get_feats(style_image.unsqueeze(0)))
+        img_feats = trainer.feature_extractor(new_image, False)
+        # exit(0)
+        
+        # print(img_feats.shape)
+        ######################################################################
+        # 不聚类
+        if trainer.config.style.gta_type == "default":
+            c, h, w = img_feats.shape
+            img_feats = img_feats.view(c, -1)
+            _, num_clusters = img_feats.shape
+        
+        ######################################################################
+        # 聚类
+        if trainer.config.style.gta_type == "kmeans":
+            # 处理为k-means可用形式
+            c, h, w = img_feats.shape
+            img_feats_flat = img_feats.permute(1, 2, 0).reshape(-1, c)
+            img_feats_np = img_feats_flat.cpu().numpy()
+            
+            # k-means
+            # TODO: 超参调整
+            num_clusters = 40
+            kmeans = KMeans(n_clusters=num_clusters, random_state=42, max_iter=300)
+            kmeans.fit(img_feats_np)
+            
+            # 获取每个像素对应的聚类标签
+            cluster_labels = kmeans.labels_  # [h * w]
+
+            # 获取聚类中心
+            cluster_centers = kmeans.cluster_centers_  # [num_clusters, c]
+
+            # 将每个像素替换为其所属聚类的中心向量
+            discretized_feats_flat = torch.tensor(cluster_centers, device=img_feats.device)
+
+            # 将特征还原回原始形状 [c, -1]
+            img_feats = discretized_feats_flat.view(-1, c).permute(1, 0)
+        
+        ######################################################################
+        # 裁剪
+        # TODO: 后面可以手动控制变量范围
+        
+        if trainer.config.style.gta_type == "clip":
+            c, h, w = img_feats.shape
+            target_h = 8
+            target_w = 8
+            
+            start_h = (h - target_h) // 2
+            start_w = (w - target_w) // 2
+            
+            cropped_tensor = img_feats[:, start_h:start_h + target_h, start_w:start_w + target_w]
+            # view必须张量在内存中连续，所以用reshape
+            img_feats = cropped_tensor.reshape(c, -1)
+            _, num_clusters = img_feats.shape
+        
+        # 将新特征组加入总特征集合（当前未考虑深度分组）
+        
+        enhanced_style_features.append(img_feats)
+        # trainer.ctx.style_feat.append(img_feats)
+        
+        # M_tensor = torch.from_numpy(M_parameter)
+        # 目前先只存了旋转角度，用于求loss，而不是
+        M_tensor = torch.tensor(theta)
+        matrix_list = torch.stack([M_tensor] * num_clusters).to("cuda").unsqueeze(0)
+        style_matrix.append(matrix_list)
+        # trainer.ctx.style_matrix.append(matrix_list)
+
+    enhanced_style_features = torch.cat(enhanced_style_features, dim=1)
+    style_matrix = torch.cat(style_matrix, dim=1)
+    return enhanced_style_features, style_matrix
+    # trainer.ctx.style_feat = torch.cat(trainer.ctx.style_feat, dim=1)
+    # trainer.ctx.style_matrix = torch.cat(trainer.ctx.style_matrix, dim=1)

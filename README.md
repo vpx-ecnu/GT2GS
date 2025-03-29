@@ -1,1 +1,1 @@
-# TextureGS
+# $\text{GT}^2\text{GS}$

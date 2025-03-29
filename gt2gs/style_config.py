@@ -70,11 +70,10 @@ class StyleConfig(Serializable):
     name: str = "default"
     gta_type: str = "default"
     no_grad: bool = field(False, action="store_true")
-    prior: bool = field(False, action="store_true")
     density: bool = field(False, action="store_true")
     lambda_consistent_loss: float = 2
     lambda_prior_loss: float = 2
-    lambda_content_loss: float = 0.005
+    lambda_content_loss: float = 0.0005
     lambda_imgtv_loss: float = 0.02
     lambda_depth_loss: float = 0.01
     lambda_shape_loss: float = 0.1
@@ -92,6 +91,11 @@ class StyleConfig(Serializable):
     
     init_densification_image_intervals: int = 10
     init_densification_downsample: int = 2
+    
+    log2_depth_clustering_num: int = 2
+    
+    prior: bool = field(False, action="store_true")
+    theta: int = 0
 
 @dataclass
 class ConfigManager(Serializable):
@@ -129,6 +133,10 @@ class ConfigManager(Serializable):
     def _check_params(self):
         assert os.path.exists(self.style.style_image), f"{self.style.style_image} does not exists."
         
+        assert self.style.log2_depth_clustering_num <= 6, "log2_depth_clustering_num can not exceed 6"
+        self.style.depth_clustering_num = pow(2, self.style.log2_depth_clustering_num)
+        
+        assert self.style.theta >= 0 and self.style.theta <= 359, "theta mush between 0 and 359"
         
 
     def _save_args(self):

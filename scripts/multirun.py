@@ -8,9 +8,9 @@ def train(scene, style):
     cmd = f"\
     python style_main.py \
         -s /Datasets/preprocessed_data/llff/{scene} \
-        -o /Datasets/radegs_0/llff/{scene} \
+        -m /Datasets/radegs_0/llff/{scene} \
         --style_image /Datasets/styles/GT2GS/{style} \
-        -m {output_path} \
+        -o {output_path} \
         --color_transfer \
         --gta_type clip \
         --density"

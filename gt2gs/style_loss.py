@@ -3,7 +3,6 @@ import torch
 import torchvision
 from torchvision.models import VGG16_Weights
 import torch.nn.functional as F
-from sklearn.cluster import KMeans
 import numpy as np
 import cv2
 from PIL import Image
@@ -34,7 +33,7 @@ class FeatureExtractor(torch.nn.Module):
             std=[0.229, 0.224, 0.225]
         )
     
-    def get_features(self, original: torch.Tensor, downscale=True) -> torch.Tensor:
+    def __call__(self, original: torch.Tensor, downscale=True) -> torch.Tensor:
         image = original.unsqueeze(0)
         
         if downscale:
@@ -51,13 +50,13 @@ class FeatureExtractor(torch.nn.Module):
             if idx == final_layer:
                 break
                 
-        return torch.cat(outputs, dim=1).squeeze()
+        return torch.cat(outputs, dim=1).squeeze(dim=0)
     
     
 def nnfm_argmin_cos_distance(a, b, center=False):
     """
-    a: [b, c, hw],
-    b: [b, c, h2w2]
+    a: [c, n],
+    b: [c, m]
     """
 
     # 归一化b（每个m向量单位化）
@@ -87,14 +86,19 @@ def nnfm_argmin_cos_distance(a, b, center=False):
     return torch.cat(z_best, dim=0)
 
 def nnfm_feat_replace(A, B, Mat):
-    c, h, w = A.shape
-    A_flat = A.reshape(c, -1)
-    B_flat = B.reshape(c, -1)
+    # c, h, w = A.shape
+    # A_flat = A.reshape(c, -1)
+    # B_flat = B.reshape(c, -1)
     # indices:[h*w]
-    indices = nnfm_argmin_cos_distance(A_flat, B_flat)
+    indices = nnfm_argmin_cos_distance(A, B)
     C_flat = B[:, indices]
     C_matrix = Mat[:, indices]
-    return C_flat.reshape(c, h, w), C_matrix.reshape(1, h, w)
+    # ic(A.shape)
+    # ic(B.shape)
+    # ic(C_flat.shape)
+    # ic(C_matrix.shape)
+    # exit(0)
+    return C_flat, C_matrix
 
 def prior_argmin_cos_distance(a, b, Mat, p_mask, p_feats, p_Mat):
     """
@@ -157,21 +161,25 @@ def prior_argmin_cos_distance(a, b, Mat, p_mask, p_feats, p_Mat):
     return torch.cat(z_best, dim=0)
 
 def prior_feat_replace(A, B, Mat, p_mask, p_feats, p_Mat):
-    c, h, w = A.shape
-    A_flat = A.reshape(c, -1)
-    B_flat = B.reshape(c, -1)
+    # c, h, w = A.shape
+    # A_flat = A.reshape(c, -1)
+    # B_flat = B.reshape(c, -1)
     
-    Mat_flat = Mat.reshape(1, -1)
-    p_mask_flat = p_mask.reshape(1, -1)
-    p_feats_flat = p_feats.reshape(c, -1)
-    p_Mat_flat = p_Mat.reshape(1, -1)
+    # Mat_flat = Mat.reshape(1, -1)
+    # p_mask_flat = p_mask.reshape(1, -1)
+    # p_feats_flat = p_feats.reshape(c, -1)
+    # p_Mat_flat = p_Mat.reshape(1, -1)
     
     # indices:[h*w]
-    indices = prior_argmin_cos_distance(A_flat, B_flat, Mat_flat, p_mask_flat, p_feats_flat, p_Mat_flat)
+    indices = prior_argmin_cos_distance(A, B, Mat, p_mask, p_feats, p_Mat)
     C_flat = B[:, indices]
-    # TODO：带有先验Mat的要考虑维持原有的Mat
-    # C_matrix = Mat[:, indices]
-    C_matrix = Mat[:, indices] * (1 - p_mask_flat) + p_Mat_flat * p_mask_flat
-    return C_flat.reshape(c, h, w), C_matrix.reshape(1, h, w)
+    C_matrix = Mat[:, indices] * (1 - p_mask) + p_Mat * p_mask
+    
+    return C_flat, C_matrix
     
     
+def content_loss_fn(render_feats_list, scene_feats_list):
+    content_loss = 0
+    for (render_feat, scene_feat) in zip(render_feats_list, scene_feats_list):
+        content_loss += torch.mean((render_feat - scene_feat) ** 2)
+    return content_loss
