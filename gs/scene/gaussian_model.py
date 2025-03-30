@@ -8,7 +8,7 @@
 #
 # For inquiries contact  george.drettakis@inria.fr
 #
-
+from icecream import ic
 import open3d as o3d
 import torch
 import numpy as np
@@ -57,6 +57,9 @@ class GaussianModel:
         self.xyz_gradient_accum = torch.empty(0, device="cuda")
         self.sh_gradient_accum = torch.empty(0, device="cuda")
         self.denom = torch.empty(0, device="cuda")
+        self.parent_opacity = torch.empty(0, device="cuda")
+        self.parent_scaling = torch.empty(0, device="cuda")
+        self.parent_position = torch.empty(0, device="cuda")
         self.optimizer = None
         self.percent_dense = 0
         self.spatial_lr_scale = 0
@@ -75,6 +78,9 @@ class GaussianModel:
             self.xyz_gradient_accum,
             self.sh_gradient_accum,
             self.denom,
+            self.parent_opacity,
+            self.parent_scaling,
+            self.parent_position,
             self.optimizer.state_dict(),
             self.spatial_lr_scale,
         )
@@ -91,12 +97,18 @@ class GaussianModel:
         xyz_gradient_accum, 
         sh_gradient_accum,
         denom,
+        parent_opacity,
+        parent_scaling,
+        parent_position,
         opt_dict, 
         self.spatial_lr_scale) = model_args
         self.training_setup(training_args)
         self.xyz_gradient_accum = xyz_gradient_accum
         self.sh_gradient_accum = sh_gradient_accum
         self.denom = denom
+        self.parent_opacity = parent_opacity
+        self.parent_scaling = parent_scaling
+        self.parent_position = parent_position
         self.optimizer.load_state_dict(opt_dict)
 
         # TODO: 3dgs filtering
@@ -167,6 +179,9 @@ class GaussianModel:
     def training_setup(self, training_args):
         self.percent_dense = training_args.percent_dense
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.parent_opacity = torch.zeros_like(self.get_opacity, device="cuda")
+        self.parent_scaling = torch.zeros_like(self.parent_scaling, device="cuda")
+        self.parent_position = torch.zeros_like(self._xyz, device="cuda")
         self.sh_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
 
@@ -321,6 +336,10 @@ class GaussianModel:
 
         self.xyz_gradient_accum = self.xyz_gradient_accum[valid_points_mask]
         self.sh_gradient_accum = self.sh_gradient_accum[valid_points_mask]
+        
+        self.parent_opacity = self.parent_opacity[valid_points_mask]
+        self.parent_scaling = self.parent_scaling[valid_points_mask]
+        self.parent_position = self.parent_position[valid_points_mask]
 
         self.denom = self.denom[valid_points_mask]
         self.max_radii2D = self.max_radii2D[valid_points_mask]
@@ -347,7 +366,8 @@ class GaussianModel:
 
         return optimizable_tensors
 
-    def densification_postfix(self, new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation):
+    def densification_postfix(self, new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation,
+                              new_parent_opacity, new_parent_scaling, new_parent_position):
         d = {"xyz": new_xyz,
         "f_dc": new_features_dc,
         "f_rest": new_features_rest,
@@ -363,6 +383,10 @@ class GaussianModel:
         self._scaling = optimizable_tensors["scaling"]
         self._rotation = optimizable_tensors["rotation"]
 
+        self.parent_opacity = torch.cat((self.parent_opacity, new_parent_opacity), dim=0)
+        self.parent_scaling = torch.cat((self.parent_scaling, new_parent_scaling), dim=0)
+        self.parent_position = torch.cat((self.parent_position, new_parent_position), dim=0)
+        
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.sh_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
@@ -381,7 +405,15 @@ class GaussianModel:
         new_features_rest = self._features_rest[gaussian_mask].repeat(N,1,1)
         new_opacity = self._opacity[gaussian_mask].repeat(N,1)
 
-        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation)
+        # ic(self.parent_opacity.shape)
+        new_parent_opacity = self.parent_opacity[gaussian_mask].repeat(N, 1)
+        new_parent_scaling = self.parent_scaling[gaussian_mask].repeat(N, 1)
+        new_parent_position = self.parent_position[gaussian_mask].repeat(N, 1)
+        # ic(new_parent_opacity.shape)
+        # ic(new_parent_scaling.shape)
+        
+        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation,
+                                   new_parent_opacity, new_parent_scaling, new_parent_position)
 
         prune_filter = torch.cat((gaussian_mask, torch.zeros(N * gaussian_mask.sum(), device="cuda", dtype=bool)))
         self.prune_points(prune_filter)
@@ -408,8 +440,17 @@ class GaussianModel:
         new_opacities = self._opacity[selected_pts_mask]
         new_scaling = self._scaling[selected_pts_mask]
         new_rotation = self._rotation[selected_pts_mask]
-
-        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation)
+        
+        new_parent_opacity = self.parent_opacity[selected_pts_mask]
+        new_parent_scaling = self.parent_scaling[selected_pts_mask]
+        new_parent_position = self.parent_position[selected_pts_mask]
+        # ic(self._opacity.shape, new_opacities.shape)
+        # ic(self._scaling.shape, new_scaling.shape)
+        # ic(self.parent_opacity.shape, new_parent_opacity.shape)
+        # ic(self.parent_scaling.shape, new_parent_scaling.shape)
+        
+        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation,
+                                   new_parent_opacity, new_parent_scaling, new_parent_position)
 
     def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size):
         # grads = self.xyz_gradient_accum / self.denom

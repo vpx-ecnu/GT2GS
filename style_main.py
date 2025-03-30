@@ -35,7 +35,12 @@ def main():
     trainer = StyleTrainer(config)
     trainer.train()
     
-    from scripts.render_llff_video import render_video
+    
+    trainer.config.model.model_path = trainer.config.style.stylized_model_path
+    if trainer.config.model.source_path.find("tnt") != -1:
+        from scripts.render_tnt_video import render_video
+    else:
+        from scripts.render_llff_video import render_video
     render_video(trainer)
     
     # render_viewpoint(trainer)

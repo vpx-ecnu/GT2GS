@@ -30,7 +30,7 @@ class OptimizationConfig(Serializable):
     position_lr_final: float = 0.0000016
     position_lr_delay_mult: float = 0.01
     position_lr_max_steps: int = 30_000
-    feature_lr: float = 0.0025
+    feature_lr: float = 0.025
     opacity_lr: float = 0.05
     scaling_lr: float = 0.005
     rotation_lr: float = 0.001
@@ -71,13 +71,17 @@ class StyleConfig(Serializable):
     name: str = "default"
     gta_type: str = "default"
     no_grad: bool = field(False, action="store_true")
-    density: bool = field(False, action="store_true")
+    densify: bool = field(False, action="store_true")
+    pre_densify: bool = field(False, action="store_true")
     lambda_consistent_loss: float = 2
     lambda_prior_loss: float = 2
     lambda_content_loss: float = 0.005
     lambda_imgtv_loss: float = 0.02
     lambda_depth_loss: float = 0.01
     lambda_shape_loss: float = 0.1
+    lambda_delta_opacity: float = 0
+    lambda_delta_scaling: float = 0
+    lambda_delta_position: float = 1
     
     color_transfer: bool = field(False, action="store_true")
     preprocess_iter: int = 400

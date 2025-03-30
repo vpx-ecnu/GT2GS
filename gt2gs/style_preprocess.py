@@ -60,10 +60,10 @@ def _init_add_gaussians(trainer):
         edges = cv2.Canny(gray_image, threshold1=50, threshold2=150)
 
         window_size = 15
-        edge_density = cv2.blur(edges, (window_size, window_size))
+        edge_densify = cv2.blur(edges, (window_size, window_size))
 
         threshold = 1
-        return edge_density < threshold
+        return edge_densify < threshold
     
     init_image_idx = torch.arange(0, trainer.ctx.scene_images.shape[0], 
                                   trainer.config.style.init_densification_image_intervals)

@@ -13,7 +13,7 @@ python style_main.py \
     --style_image ./styles/$2 \
     --color_transfer \
     --gta_type clip \
-    --density \
+    --densify \
     # --prior \
     # --need_log \
     # --style_iter 10 \
@@ -26,5 +26,5 @@ python style_main.py \
 #     --style_image /Datasets/styles/texture/$2 \
 #     --color_transfer \
 #     --gta_type clip \
-#     --density \
+#     --densify \
 

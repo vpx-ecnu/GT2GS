@@ -190,14 +190,8 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
 
         # if not skip_test:
         #      render_set(trainer.config.model.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background)
-@torch.no_grad
-def main():
-    
-    config = parse_args()
-    config.model.model_path = config.style.stylized_model_path
-    
-    trainer = StyleTrainer(config)
-    
+def render_video(trainer):
+  
 
     cam_infos = trainer.scene.getTrainCameras()
     cam_infos_render_vd = []
@@ -280,11 +274,19 @@ def main():
     # save_dir = trainer.config.model.model_path
     # os.makedirs(save_dir,exist_ok=True)
     save_path = os.path.join(trainer.config.model.model_path,f'{scene_name}.mp4')
-    imageio.mimwrite(save_path, np.stack(imgs), fps=60, quality=5)
+    imageio.mimwrite(save_path, np.stack(imgs), fps=30, quality=5)
     print(f'The video is saved in {save_path}.')
 
     # render_viewpoint(trainer)
     
+@torch.no_grad
+def main():
+    
+    config = parse_args()
+    config.model.model_path = config.style.stylized_model_path
+    
+    trainer = StyleTrainer(config)
+    render_video(trainer)
     
 if __name__ == "__main__":
     

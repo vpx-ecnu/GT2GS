@@ -4,14 +4,14 @@ app:
   port: 6009
 model:
   data_device: cuda
-  model_path: /Datasets/radegs_0/llff/trex
-  source_path: /Datasets/preprocessed_data/llff/trex
+  model_path: /Datasets/radegs_0/llff/fern
+  source_path: /Datasets/preprocessed_data/llff/fern
 
 style:
   # stylized_model_path: output/2025-03-28_17-28-33
 
   color_transfer: true
-  densify: false
+  # densify: true
   geometry_iter: 0
   gta_type: clip
   init_densification_downsample: 2
@@ -30,6 +30,6 @@ style:
   
   rounds: 10
 
-  style_image: ./styles/grid_0066.jpg
+  style_image: ./styles/black_white.jpg
 
   style_iter: 60

@@ -11,7 +11,7 @@ style:
   # stylized_model_path: output/2025-03-28_17-28-33
 
   color_transfer: true
-  density: true
+  # densify: true
   geometry_iter: 0
   gta_type: clip
   init_densification_downsample: 2

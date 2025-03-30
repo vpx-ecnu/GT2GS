@@ -139,8 +139,8 @@ def prior_argmin_cos_distance(a, b, Mat, p_mask, p_feats, p_Mat):
         d_mat = 1.0 - similarity  # 转换为距离
         
         # prior， 有需要调整的超参
-        similarity2 = torch.mm(p_feats_batch_normalized.t(), b_normalized) + torch.mm(p_Mat_batch.t(), Mat)
-        d_mat2 = (1.0 - similarity2) * cal_p_mask
+        # similarity2 = torch.mm(p_feats_batch_normalized.t(), b_normalized) + torch.mm(p_Mat_batch.t(), Mat)
+        # d_mat2 = (1.0 - similarity2) * cal_p_mask
         
         # TODO: 旋转操作
         
@@ -151,7 +151,7 @@ def prior_argmin_cos_distance(a, b, Mat, p_mask, p_feats, p_Mat):
         
         # distance聚合
         # d_mat_all = d_mat + d_mat2 + l1_dist
-        d_mat_all = d_mat + l1_dist
+        d_mat_all = d_mat + 100 * l1_dist
         
         
         # 找到每个位置的最小距离索引

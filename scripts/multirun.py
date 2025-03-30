@@ -13,7 +13,7 @@ def train(scene, style):
         -o {output_path} \
         --color_transfer \
         --gta_type clip \
-        --density"
+        --densify"
     print(cmd)
     os.system(cmd)
 

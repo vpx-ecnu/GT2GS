@@ -6,18 +6,19 @@ model:
   data_device: cuda
   model_path: /Datasets/radegs_0/tnt/truck
   source_path: /Datasets/preprocessed_data/tnt/truck
-
+opt:
+  style_densification_interval: 150
 style:
   # stylized_model_path: output/2025-03-28_17-28-33
 
   color_transfer: true
-  density: true
+  densify: true
   geometry_iter: 0
   gta_type: clip
   init_densification_downsample: 2
   init_densification_image_intervals: 10
   lambda_consistent_loss: 2
-  lambda_content_loss: 0.005
+  lambda_content_loss: 0.01
   lambda_depth_loss: 0.01
   lambda_imgtv_loss: 0.02
   lambda_prior_loss: 2

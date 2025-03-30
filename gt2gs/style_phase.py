@@ -89,6 +89,9 @@ class PreProcessPhase(ProcessPhase):
     @torch.no_grad
     def _densification(self, iteration: int):
         
+        if not self.config.style.pre_densify:
+            return
+        
         gaussians = self.trainer.gaussians
         opt = self.trainer.config.opt
         # scene = self.trainer.scene
@@ -114,7 +117,13 @@ class PreProcessPhase(ProcessPhase):
         ):
             tmp = torch.max(gaussians.get_scaling, dim=1).values
             self.threshold = torch.quantile(tmp, 0.95)
-            gaussians.split_special_gaussians(tmp > self.threshold)
+            
+            
+            top2_values, _ = torch.topk(self.trainer.gaussians.get_scaling, k=2, dim=1) 
+            ratio = (top2_values[:, 0] / top2_values[:, 1])
+            self.threshold_ratio = torch.quantile(ratio, 0.95)
+            
+            gaussians.split_special_gaussians(torch.logical_or(tmp > self.threshold, ratio > self.threshold_ratio))
             
     @torch.no_grad
     def on_phase_start(self):
@@ -127,8 +136,22 @@ class PreProcessPhase(ProcessPhase):
         # self.trainer.feature_extractor = FeatureExtractor()
         # self._init_original_feats()
         # self._init_style_feat()
-        _init_depth_images(self.trainer)
+        # _init_depth_images(self.trainer)
         
+        # self.trainer.initial_opacity = self.trainer.gaussians._opacity.clone().detach()
+        # self.trainer.initial_scaling = self.trainer.gaussians._scaling.clone().detach()
+        
+        self.trainer.gaussians.parent_opacity = self.trainer.gaussians._opacity.clone().detach()
+        self.trainer.gaussians.parent_scaling = self.trainer.gaussians._scaling.clone().detach()
+        self.trainer.gaussians.parent_position = self.trainer.gaussians._xyz.clone().detach()
+        
+        
+        # loss_delta_opacity = torch.norm(self.trainer.gaussians._opacity - self.trainer.gaussians.parent_opacity)
+        # loss_delta_scaling = torch.norm(self.trainer.gaussians._scaling - self.trainer.gaussians.parent_opacity)
+        # ic(loss_delta_opacity, loss_delta_scaling)
+        # exit(0)
+        # ic(self.trainer.gaussians.parent_opacity.shape)
+        # ic(self.trainer.gaussians.parent_scaling.shape)
         
         # viewpoint_stack = self.trainer.scene.getTrainCameras()
         # self.trainer.ctx.depth_images = []
@@ -177,7 +200,7 @@ class StylizationPhase(TrainingPhase):
     
     @torch.no_grad
     def _densification(self, iteration: int):
-        if not self.trainer.config.style.density:
+        if not self.trainer.config.style.densify:
             return 
         delta_iteration = iteration - self.start_iter
         
@@ -220,6 +243,7 @@ class StylizationPhase(TrainingPhase):
         # self.style_matrix = self.trainer.ctx.style_matrix
         if self.trainer.config.style.no_grad:
             self.trainer.gaussians._xyz.requires_grad_(False)
+            self.trainer.gaussians._rotation.requires_grad_(False)
             self.trainer.gaussians._scaling.requires_grad_(False)
             self.trainer.gaussians._opacity.requires_grad_(False)
         # self._init_projection()
@@ -228,6 +252,7 @@ class StylizationPhase(TrainingPhase):
         # pass
         if self.trainer.config.style.no_grad:
             self.trainer.gaussians._xyz.requires_grad_(True)
+            self.trainer.gaussians._rotation.requires_grad_(True)
             self.trainer.gaussians._scaling.requires_grad_(True)
             self.trainer.gaussians._opacity.requires_grad_(True)
         else:
@@ -326,6 +351,9 @@ class StylizationPhase(TrainingPhase):
         
         with self.trainer.timer as timer:
             
+            # ic(self.trainer.gaussians.parent_opacity.shape)
+            # ic(self.trainer.gaussians.parent_scaling.shape)
+            
             self.render_pkg = self.trainer.get_render_pkgs(curr_cam)
             render_image = self.render_pkg["render"]
             curr_image = self.trainer.ctx.scene_images[curr_cam.uid]
@@ -342,10 +370,13 @@ class StylizationPhase(TrainingPhase):
             render_depth = self.render_pkg["depth"]
             curr_depth = self.trainer.ctx.depth_images[curr_cam.uid]
             depth_loss = torch.mean((render_depth - curr_depth) ** 2)
-            
+            # ic(self.trainer.cur_phase, self.trainer.config.style.rounds, len(self.trainer.phases))
             if (self.trainer.config.style.prior == False or 
                 (self.trainer.cur_phase - 1) % 2 == 1 or 
-                (self.trainer.cur_phase - 1) >= 5):
+                (self.trainer.cur_phase - 1) >= self.trainer.config.style.rounds // 2 or
+                self.trainer.cur_phase == self.trainer.config.style.rounds):
+                # ic("nnfm")
+            # if False:
                 
                 # style_features_list = self.trainer.ctx.style_features_list
                 # style_matrix_list = self.trainer.ctx.style_matrix_list
@@ -615,8 +646,10 @@ class StylizationPhase(TrainingPhase):
             imgtv_loss = get_imgtv_loss(render_image)
             
             # concat_and_save_images("./image.jpg", curr_image, render_image, curr_depth, render_depth)
-
-            
+            # if not self.trainer.config.style.densify:
+            # ic(loss_delta_opacity, loss_delta_scaling)
+            # exit(0)
+            # ic(loss_delta_scaling, loss_delta_opacity)
             
             loss = (
                 # Todo: check consistent_loss
@@ -627,6 +660,13 @@ class StylizationPhase(TrainingPhase):
                 + self.trainer.config.style.lambda_depth_loss * depth_loss
                 + self.trainer.config.style.lambda_shape_loss * shape_loss
             )
+            
+            loss_delta_opacity = torch.norm(self.trainer.gaussians._opacity - self.trainer.gaussians.parent_opacity)
+            loss_delta_scaling = torch.norm(self.trainer.gaussians._scaling - self.trainer.gaussians.parent_scaling)
+            loss_delta_position = torch.norm(self.trainer.gaussians._xyz - self.trainer.gaussians.parent_position)
+            # if not self.trainer.config.style.densify:
+            loss += (self.trainer.config.style.lambda_delta_opacity * loss_delta_opacity 
+                    + self.trainer.config.style.lambda_delta_scaling * loss_delta_scaling)
             
             self.update(iteration, loss)
             
