@@ -281,13 +281,14 @@ def preprocess(trainer):
     # for i, image in enumerate(downscaled_style_images):
     #     # ic(image.shape)
     #     render_RGBcolor_images(f"./debug/downscaled_images/{i}.jpg", image)
-        
+    color_transfer(trainer.ctx)
+    
     trainer.feature_extractor = FeatureExtractor()
     style_features_list, style_matrix_list = _init_style_features(trainer, downscaled_style_images)
     
     # for i, style_features in enumerate(style_features_list):
     #     ic(style_features.shape)
-        
+    
     scene_features_list, scene_features_mask_list = _init_scene_features(trainer, trainer.ctx.scene_images, depth_masks)
     # for i, features_list in enumerate(scene_features_list):
     #     for j, features in enumerate(features_list):

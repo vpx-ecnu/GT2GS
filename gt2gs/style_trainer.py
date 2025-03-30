@@ -17,14 +17,14 @@ class StyleTrainer:
     def __init__(self, config: ConfigManager):
         self.config = config
         self.device = config.model.data_device
-        self.timer = CUDATimer()
-        self.cur_phase = -1
         
         self._init_components()
         
     def train(self):
         
         preprocess(self)
+        self.timer = CUDATimer()
+        self.cur_phase = -1
         self._init_phases()
         self._init_observers()
         
@@ -77,7 +77,7 @@ class StyleTrainer:
         
     def _init_components(self):
         self.gaussians = GaussianModel(self.config.model.sh_degree)
-        self.scene = Scene(self.config.model, self.gaussians, -1, shuffle=False)
+        self.scene = Scene(self.config.model, self.gaussians, self.config.ckpt.load_iterations, shuffle=False)
         
         bg_color = [1, 1, 1] if self.config.model.white_background else [0, 0, 0]
         self.background = torch.tensor(bg_color, dtype=torch.float32, device=self.config.model.data_device)

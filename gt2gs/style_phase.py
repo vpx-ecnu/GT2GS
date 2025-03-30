@@ -38,6 +38,7 @@ class TrainingPhase(ABC):
 
     def on_phase_end(self): ...
     
+    @torch.no_grad
     def _densification(self, iteration: int): ...
 
 
@@ -85,6 +86,7 @@ class ProcessPhase(TrainingPhase):
 class PreProcessPhase(ProcessPhase):
     
     
+    @torch.no_grad
     def _densification(self, iteration: int):
         
         gaussians = self.trainer.gaussians
@@ -116,8 +118,9 @@ class PreProcessPhase(ProcessPhase):
             
     @torch.no_grad
     def on_phase_start(self):
-        if self.config.style.color_transfer:
-            color_transfer(self.trainer.ctx)
+        pass
+        # if self.config.style.color_transfer:
+        #     color_transfer(self.trainer.ctx)
             
     @torch.no_grad
     def on_phase_end(self):
@@ -172,6 +175,7 @@ class PostProcessPhase(ProcessPhase):
 
 class StylizationPhase(TrainingPhase):
     
+    @torch.no_grad
     def _densification(self, iteration: int):
         if not self.trainer.config.style.density:
             return 
@@ -188,8 +192,10 @@ class StylizationPhase(TrainingPhase):
         
         gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
         gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
-            
-        if delta_iteration % opt.style_densification_interval == 0 and delta_iteration != 0:
+        
+        if (delta_iteration % opt.style_densification_interval == 0 and delta_iteration != 0
+            and (self.uid - 1) < self.trainer.config.style.rounds // 2):
+            # ic("densification")
             # threshold = torch.quantile(radii[visibility_filter].float(), 0.10)
             
             # big_mask = torch.logical_and(visibility_filter, radii > threshold)
@@ -337,7 +343,9 @@ class StylizationPhase(TrainingPhase):
             curr_depth = self.trainer.ctx.depth_images[curr_cam.uid]
             depth_loss = torch.mean((render_depth - curr_depth) ** 2)
             
-            if self.trainer.config.style.prior == False or self.trainer.cur_phase % 2 == 0:
+            if (self.trainer.config.style.prior == False or 
+                (self.trainer.cur_phase - 1) % 2 == 1 or 
+                (self.trainer.cur_phase - 1) >= 5):
                 
                 # style_features_list = self.trainer.ctx.style_features_list
                 # style_matrix_list = self.trainer.ctx.style_matrix_list

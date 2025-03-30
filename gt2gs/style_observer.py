@@ -89,7 +89,7 @@ class CheckpointSaver(TrainingObserver):
     
     def _save_gaussians(self, iteration):
         print("\n[ITER {}] Saving Gaussians".format(iteration))
-        self.trainer.scene.save(self.trainer.total_iterations, self.trainer.config.style.stylized_model_path)
+        self.trainer.scene.save(iteration, self.trainer.config.style.stylized_model_path)
         
     def on_training_end(self):
         self._save_gaussians(self.trainer.total_iterations)

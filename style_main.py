@@ -35,6 +35,9 @@ def main():
     trainer = StyleTrainer(config)
     trainer.train()
     
+    from scripts.render_llff_video import render_video
+    render_video(trainer)
+    
     # render_viewpoint(trainer)
 
 

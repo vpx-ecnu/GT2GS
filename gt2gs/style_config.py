@@ -58,6 +58,7 @@ class ApplicationConfig(Serializable):
     
 @dataclass
 class CheckpointConfig(Serializable):
+    load_iterations: int = -1
     save_iterations: list[int] = list_field()
     checkpoint_iterations: list[int] = list_field()
     start_checkpoint: str = None

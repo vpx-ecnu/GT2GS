@@ -183,5 +183,5 @@ def content_loss_fn(render_feats_list, scene_feats_list):
     coefficient = 1
     for (render_feat, scene_feat) in zip(render_feats_list, scene_feats_list):
         content_loss += coefficient * torch.mean((render_feat - scene_feat) ** 2)
-        coefficient /= 10
+        coefficient /= 5
     return content_loss
