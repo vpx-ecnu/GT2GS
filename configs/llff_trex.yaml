@@ -11,7 +11,7 @@ style:
   # stylized_model_path: output/2025-03-28_17-28-33
 
   color_transfer: true
-  densify: false
+  stylize_densify: false
   geometry_iter: 0
   gta_type: clip
   init_densification_downsample: 2
@@ -28,8 +28,4 @@ style:
   preprocess_iter: 400
   prior: false
   
-  rounds: 10
-
   style_image: ./styles/grid_0066.jpg
-
-  style_iter: 60

@@ -71,7 +71,7 @@ class StyleConfig(Serializable):
     name: str = "default"
     gta_type: str = "default"
     no_grad: bool = field(False, action="store_true")
-    densify: bool = field(False, action="store_true")
+    stylize_densify: bool = field(False, action="store_true")
     pre_densify: bool = field(False, action="store_true")
     lambda_consistent_loss: float = 2
     lambda_prior_loss: float = 2
@@ -86,9 +86,10 @@ class StyleConfig(Serializable):
     color_transfer: bool = field(False, action="store_true")
     preprocess_iter: int = 400
     postpreprocess_iter: int = 400
+    revise_iter: int = 400
     
     rounds: int = 10
-    style_iter: int = 60
+    style_iter: int = 80
     geometry_iter: int = 0
     
     style_image: str = None

@@ -207,10 +207,10 @@ def render_ctx(ctx, path="./debug"):
         render_depth_or_mask_images(os.path.join(depth_path, f"{int(i):04d}.png"), ctx.depth_images[0])
 
 
-def render_viewpoint(trainer):
+def render_viewpoint(trainer, path=None):
     
-    depth_path = os.path.join(trainer.config.style.stylized_model_path, "depth/")
-    render_path = os.path.join(trainer.config.style.stylized_model_path, "render/")
+    depth_path = os.path.join(path or trainer.config.style.stylized_model_path, "depth/")
+    render_path = os.path.join(path or trainer.config.style.stylized_model_path, "render/")
     
     os.makedirs(depth_path, exist_ok=True)
     os.makedirs(render_path, exist_ok=True)
@@ -856,3 +856,87 @@ def get_enhanced_style_features(trainer, style_image):
     return enhanced_style_features, style_matrix
     # trainer.ctx.style_feat = torch.cat(trainer.ctx.style_feat, dim=1)
     # trainer.ctx.style_matrix = torch.cat(trainer.ctx.style_matrix, dim=1)
+    
+
+def compute_rotation_angles(A, B, fh, fw):
+    """
+    计算特征图中每个位置的旋转角度（并行化版本）。
+    
+    参数：
+        A (torch.Tensor): 形状为 [h, w, 2] 的张量，表示原始坐标 [X, Y]
+        B (torch.Tensor): 形状为 [h, w, 2] 的张量，表示变换后的坐标 [X, Y]
+        fh (int): 特征图的高度
+        fw (int): 特征图的宽度
+    
+    返回：
+        C (torch.Tensor): 形状为 [1, fh, fw] 的张量，表示每个特征图像素的旋转角度
+    """
+    # 获取原图像尺寸
+    h, w, _ = A.shape
+    
+    # 计算池化步幅
+    pool_size_h = h // fh
+    pool_size_w = w // fw
+    
+    # 确保尺寸匹配
+    # assert h % fh == 0 and w % fw == 0, "特征图尺寸必须能整除原图像尺寸"
+    
+    # 生成所有 (x, y) 位置的网格
+    x_indices = torch.arange(fh, device=A.device)
+    y_indices = torch.arange(fw, device=A.device)
+    x_grid, y_grid = torch.meshgrid(x_indices, y_indices, indexing='ij')
+    
+    # 计算四个角点的索引
+    top_left_x = x_grid * pool_size_h
+    top_left_y = y_grid * pool_size_w
+    top_right_x = x_grid * pool_size_h
+    top_right_y = (y_grid + 1) * pool_size_w - 1
+    bottom_left_x = (x_grid + 1) * pool_size_h - 1
+    bottom_left_y = y_grid * pool_size_w
+    bottom_right_x = (x_grid + 1) * pool_size_h - 1
+    bottom_right_y = (y_grid + 1) * pool_size_w - 1
+    
+    # 提取所有位置的角点，形状为 (fh, fw, 4, 2)
+    A_S = torch.stack([
+        A[top_left_x, top_left_y],
+        A[top_right_x, top_right_y],
+        A[bottom_left_x, bottom_left_y],
+        A[bottom_right_x, bottom_right_y]
+    ], dim=2)
+    
+    B_S = torch.stack([
+        B[top_left_x, top_left_y],
+        B[top_right_x, top_right_y],
+        B[bottom_left_x, bottom_left_y],
+        B[bottom_right_x, bottom_right_y]
+    ], dim=2)
+    
+    # 批量中心化
+    mu_a = A_S.mean(dim=2, keepdim=True)  # 形状 (fh, fw, 1, 2)
+    mu_b = B_S.mean(dim=2, keepdim=True)  # 形状 (fh, fw, 1, 2)
+    A_centered = A_S - mu_a  # 形状 (fh, fw, 4, 2)
+    B_centered = B_S - mu_b  # 形状 (fh, fw, 4, 2)
+    
+    # 批量构造 H 矩阵
+    H = torch.einsum('fhij,fhjk->fhik', B_centered.permute(0, 1, 3, 2), A_centered)
+    
+    # 批量 SVD 分解
+    U, S, Vh = torch.svd(H)  # U, Vh: (fh, fw, 2, 2), S: (fh, fw, 2)
+    
+    # 计算旋转矩阵 R = U @ Vh^T
+    R = torch.einsum('fhij,fhjk->fhik', U, Vh.permute(0, 1, 3, 2))  # (fh, fw, 2, 2)
+    
+    # 检查行列式并调整（确保 R 是旋转矩阵）
+    det_R = R[:, :, 0, 0] * R[:, :, 1, 1] - R[:, :, 0, 1] * R[:, :, 1, 0]  # (fh, fw)
+    mask = det_R < 0
+    if mask.any():
+        U[mask, :, -1] = -U[mask, :, -1]  # 调整 U 的最后一列
+        R[mask] = torch.bmm(U[mask], Vh[mask].permute(0, 2, 1))
+    
+    # 批量提取角度 theta
+    theta = torch.atan2(R[:, :, 1, 0], R[:, :, 0, 0])  # 形状 (fh, fw)
+    
+    # 赋值给 C
+    C = theta.unsqueeze(0)  # 形状 (1, fh, fw)
+    
+    return C

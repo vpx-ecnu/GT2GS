@@ -100,6 +100,7 @@ def nnfm_feat_replace(A, B, Mat):
     # exit(0)
     return C_flat, C_matrix
 
+
 def prior_argmin_cos_distance(a, b, Mat, p_mask, p_feats, p_Mat):
     """
     a: [b, c, hw],

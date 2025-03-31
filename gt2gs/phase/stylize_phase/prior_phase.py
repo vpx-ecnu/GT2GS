@@ -1,0 +1,332 @@
+import torch
+import wandb
+from gt2gs.phase.stylize_phase.base_stylize_phase import StylizePhase
+from gt2gs.style_utils import *
+from gt2gs.style_loss import *
+
+
+class PriorPhase(StylizePhase):
+    
+    @torch.no_grad
+    def on_phase_start(self):
+        super().on_phase_start()
+        self.prior_target = None
+        self.prior_matrix = None
+        self.warper = self.trainer.warper
+        
+    def _update_target(self, id, feat, matrix):
+        self.prior_target = feat
+        self.prior_matrix = matrix
+    
+    
+    def on_iteration(self, iteration: int):
+        
+        last_cam, curr_cam = self._get_viewpoint_cam()
+        
+        with self.trainer.timer as timer:
+            
+            
+            self.render_pkg = self.trainer.get_render_pkgs(curr_cam)
+            render_image = self.render_pkg["render"]
+            curr_image = self.trainer.ctx.scene_images[curr_cam.uid]
+            
+            self.render_feat = self.feature_extractor(render_image)
+            curr_scene_features_mask = self.trainer.ctx.scene_features_mask_list[curr_cam.uid]
+            depth_clustering_num = self.trainer.config.style.depth_clustering_num
+            render_features_list = get_separated_list(self.render_feat, 
+                                                      curr_scene_features_mask,
+                                                      depth_clustering_num)
+            
+            # Calculate depth loss
+            render_depth = self.render_pkg["depth"]
+            curr_depth = self.trainer.ctx.depth_images[curr_cam.uid]
+            depth_loss = torch.mean((render_depth - curr_depth) ** 2)
+            
+            if last_cam is None:
+                # TODO：一个更好的先验控制模块
+                # input: 给定reference图的特征图 or mask+对应区域特征图角度控制
+                # TODO: mask额外接入or单独接入
+                # TODO: 跑NNST获得reference图
+                # if self.trainer.config.style.ref_image:
+                #     target_feat = 
+                #     target_matrix = 
+                # elif self.trainer.config.style.ref_mask:
+                #     target_feat = 
+                #     target_matrix = 
+                # else:
+                #     target_feat = 
+                #     target_matrix = 
+                    # pass
+                    
+                theta = self.trainer.config.style.theta
+                # target_feat_list = []
+                # target_matrix_list = []
+                
+                
+                fc, fh, fw = self.render_feat.shape
+                target_feat = torch.zeros((fc, fh, fw), device=self.render_feat.device)
+                target_matrix = torch.zeros((1, fh, fw), device=self.render_feat.device)
+                
+                for i in range(depth_clustering_num):
+                    mask = (curr_scene_features_mask == i)
+                    if mask.sum() == 0:
+                        continue
+                    # self.feature_extractor(ref_image)
+                    style_feat = self.trainer.ctx.style_features_list[i]
+                    style_matrix = self.trainer.ctx.style_matrix_list[i]
+                    scene_features = self.trainer.ctx.scene_features_list[curr_cam.uid][i]
+                    
+                    tmp_val = style_feat.shape[1] // 360
+                    A = style_feat[:, theta * tmp_val: (theta + 1) * tmp_val]
+                    A_mat = style_matrix[:, theta * tmp_val: (theta + 1) * tmp_val]
+                    
+                    A_indices = torch.randint(0, tmp_val - 1, (fc, scene_features.shape[1]), device=style_feat.device)
+                    A_mat_indices = torch.randint(0, tmp_val - 1, (1, scene_features.shape[1]), device=style_feat.device)
+                    
+                    # ic(torch.gather(A, 1, A_indices).shape)
+                    target_feat[:, mask] = torch.gather(A, 1, A_indices)
+                    # ic(torch.gather(A_mat, 1, A_mat_indices).shape)
+                    # ic(mask.shape)
+                    target_matrix[:, mask] = torch.gather(A_mat, 1, A_mat_indices)
+                    
+                    
+                consistent_loss = 0
+                # exit(0)
+                    # for i in range(fc):
+                    #     C[i, :] = A[i, A_indices[i]]
+                    # for i in range(matc):
+                    #     C_mat[i, :] = A_mat[i, A_mat_indices[i]]
+                        
+                    # assert (C == torch.gather(A, 1, A_indices)).all()
+                    # assert (C_mat == torch.gather(A_mat, 1, A_mat_indices)).all()
+                    
+                    # C = torch.gather(A, 1, A_indices)
+                    # C_mat = torch.gather(A_mat, 1, A_indices)
+                    
+                    # B_indices = torch.randint(0, 5, (fc, fh - fh // 2, fw))
+                    # for i in range(fc):
+                    #     C[i, fh // 2:, :] = B[i, B_indices[i]]
+                    # for i in range(matc):
+                    #     C_mat[i, fh // 2:, :] = B_mat[i, B_indices[i]]
+                    # A_expanded = setA.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, fh, fw)
+                    # B_expanded = setB.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, fh, fw)
+                    # upper_half = A_expanded[:, :h//2, :, :]
+                    # lower_half = B_expanded[:, h//2:, :, :]
+                    # C = torch.cat((upper_half, lower_half), dim=1)
+            else:
+                
+                
+                last_image = self.trainer.ctx.scene_images[last_cam.uid]
+
+                with torch.no_grad():
+                    K = torch.from_numpy(last_cam.K.astype(np.float32)).unsqueeze(0)
+                    
+                    transformation1 = torch.from_numpy(curr_cam.transformation).unsqueeze(0)
+                    transformation2 = torch.from_numpy(last_cam.transformation).unsqueeze(0)
+                    
+                    warped_frame2, mask2, pos_pre = self.warper.forward_warp(
+                        curr_image.unsqueeze(0), None,
+                        curr_depth.unsqueeze(0).unsqueeze(0), 
+                        transformation1, transformation2, K, None
+                    )
+                    # mask2: [1, 1, h, w]
+                    warped_frame2 = warped_frame2.squeeze(0)
+                    
+                    diff = torch.sqrt(torch.sum((warped_frame2 - last_image) ** 2, dim=0))  # 沿着通道维度计算欧几里得距离
+                    
+                    threshold = 0.3
+                    # 生成 mask：如果颜色差异小于阈值，mask 为 1，否则为 0
+                    trans_mask = (diff < threshold).float()
+                trans_image = trans_mask * warped_frame2 + (1 - trans_mask) * curr_image
+                    
+                trans_feat = self.feature_extractor(trans_image)
+                # trans_feat_list = get_separated_list(trans_image, 
+                #                                      curr_scene_features_mask,
+                #                                      depth_clustering_num)
+                # TODO: 动态维护
+                consistent_loss = cos_distance(self.prior_target, trans_feat)
+                    ############################
+                    
+                    # 读入先验数据
+                    # prior_target和prior_matrix还需要进行双线性插值进行转换才可以使用
+                with torch.no_grad():
+                    # TODO: 动态维护(done)
+                    prior_target = self.prior_target
+                    # TODO：按照几何进行改变(done-旋转)
+                    # 使用4个点对（or更多）的关系求解旋转和错切
+                    prior_matrix = self.prior_matrix
+                    
+                    h, w = trans_mask.shape
+                    rows = torch.arange(h, device=prior_target.device)  # (h,)
+                    cols = torch.arange(w, device=prior_target.device)  # (w,)
+                    grid_i, grid_j = torch.meshgrid(rows, cols, indexing="ij")
+                    # 原始像素坐标矩阵
+                    # pos_pre为变换到前一个像素的
+                    # 记得转成float
+                    pos = torch.stack([grid_i, grid_j], dim=-1)
+                    pos_float = pos * 1.0
+                    
+                    # 处理先验mask和对应问题
+                    _, fh, fw = self.render_feat.shape
+                    # 特征图坐标
+                    fh_grid, fw_grid = torch.meshgrid(
+                        torch.arange(fh, device=prior_target.device),
+                        torch.arange(fw, device=prior_target.device),
+                        indexing='ij'
+                    )
+                    # 特征像素对应的原始像素的中心
+                    img_h = fh_grid * 8 + 4
+                    img_w = fw_grid * 8 + 4
+                    # TODO：转换成特征像素对应的多个原始像素（最少四个？）
+                    # TODO：计算warp前对应的原始像素(done-pos_float)
+                    # TODO：计算其仿射变换矩阵（由于错切难以处理，可以考虑简化为只有旋转）(done)
+                    # TODO: 用仿射变换矩阵修改先验矩阵(done-原始角度+新角度)
+                    
+                    # TODO: 解开注释
+                    rotation = compute_rotation_angles(pos_pre, pos_float, fh, fw)
+                    prior_matrix = prior_matrix + rotation
+                    
+                    
+                    # 获得先验mask, 构建特征图大小的mask
+                    prior_idx = torch.zeros(fh, fw, 2).to(prior_target.device)
+                    prior_idx = pos[img_h, img_w]
+                    rows = prior_idx[:, :, 0]
+                    cols = prior_idx[:, :, 1]
+                    prior_mask = trans_mask[rows, cols]
+                    
+                    
+                    prior_idx = (pos_pre[img_h, img_w] - 4.0) / 8.0
+                    # 转换成
+                    grid = prior_idx.unsqueeze(0)
+                    
+                    prior_feats = F.grid_sample(prior_target.unsqueeze(0), grid, mode='bilinear', align_corners=False)
+                    prior_feats = prior_feats.squeeze()
+                # mask_feats = mask[]
+                
+                # 计算新的target_feats
+                # 其实就是找一个index, 这个index的特征和原图，先验特征和先验矩阵的总相似情况的argmin
+                # 需要注意的是mask，即有先验才用先验，没有先验则和原来nnfm一样（除了if else如何有好的实现？， 应该是要修改求argmin的时候先验项的系数，mask为0时置0）
+                    
+                    # TODO: 动态维护；可切换分支（使用先验or不使用先验）
+                    
+                    prior_mask_list = get_separated_list(prior_mask.unsqueeze(0), 
+                                                         curr_scene_features_mask,
+                                                         depth_clustering_num)
+                    prior_feature_list = get_separated_list(prior_feats, 
+                                                            curr_scene_features_mask,
+                                                            depth_clustering_num)
+                    prior_matrix_list = get_separated_list(prior_matrix, 
+                                                           curr_scene_features_mask,
+                                                           depth_clustering_num)
+                    
+                    fc, fh, fw = self.render_feat.shape
+                    target_feat = torch.zeros((fc, fh, fw), device=self.render_feat.device)
+                    target_matrix = torch.zeros((1, fh, fw), device=self.render_feat.device)
+                    
+                    # ic(prior_mask.shape, prior_feats.shape, prior_matrix.shape)
+                    # exit(0)
+                    for i in range(depth_clustering_num):
+                        mask = (curr_scene_features_mask == i)
+                        if mask.sum() == 0:
+                            continue
+                        
+                        style_feat = self.trainer.ctx.style_features_list[i]
+                        style_matrix = self.trainer.ctx.style_matrix_list[i]
+                        p_mask = prior_mask_list[i]
+                        p_feat = prior_feature_list[i]
+                        p_matrix = prior_matrix_list[i]
+                        
+                        render_feat = render_features_list[i]
+                        
+                        # ic(style_feat.shape, style_matrix.shape, render_feat.shape, (curr_scene_features_mask == i).sum())
+                        curr_target_feat, curr_target_matrix = prior_feat_replace(render_feat, 
+                                                                                  style_feat, 
+                                                                                  style_matrix,
+                                                                                  p_mask,
+                                                                                  p_feat, 
+                                                                                  p_matrix)
+                        target_feat[:, mask] = curr_target_feat
+                        target_matrix[:, mask] = curr_target_matrix
+                        
+                        
+                    
+                        # target_feat, target_matrix = (
+                        #     self.render_feat, self.style_feat, self.style_matrix,
+                        #     prior_mask, prior_feats, prior_matrix
+                        # )
+                    
+            
+                # print("111:", target_feat.mean(), target_matrix.mean())
+                # exit(0)
+            
+            
+                # trans_mask = self.trans_mask[(last_cam.uid, curr_cam.uid)]
+                # trans_depth = self.trans_depth[(last_cam.uid, curr_cam.uid)]
+                # trans_pos = self.trans_pos[(last_cam.uid, curr_cam.uid)]
+            
+                
+            self._update_target(curr_cam.uid, target_feat, target_matrix)
+            
+            prior_loss = cos_distance(target_feat, self.render_feat)
+            content_loss = content_loss_fn(render_features_list, 
+                                           self.trainer.ctx.scene_features_list[curr_cam.uid])
+            
+            # content_loss = torch.mean((self.render_feat - self.original_feats[curr_cam.uid]) ** 2) 
+            
+            top2_values, _ = torch.topk(self.trainer.gaussians.get_scaling, k=2, dim=1) 
+            shape_loss = (top2_values[:, 0] / top2_values[:, 1]).mean()
+            imgtv_loss = get_imgtv_loss(render_image)
+            
+            # concat_and_save_images("./image.jpg", curr_image, render_image, curr_depth, render_depth)
+            # if not self.trainer.config.style.densify:
+            # ic(loss_delta_opacity, loss_delta_scaling)
+            # exit(0)
+            # ic(loss_delta_scaling, loss_delta_opacity)
+            
+            loss = (
+                # Todo: check consistent_loss
+                self.trainer.config.style.lambda_consistent_loss * consistent_loss
+                + self.trainer.config.style.lambda_prior_loss * prior_loss
+                + self.trainer.config.style.lambda_content_loss * content_loss
+                + self.trainer.config.style.lambda_imgtv_loss * imgtv_loss
+                + self.trainer.config.style.lambda_depth_loss * depth_loss
+                + self.trainer.config.style.lambda_shape_loss * shape_loss
+            )
+            
+            # loss_delta_opacity = torch.norm(self.trainer.gaussians._opacity - self.trainer.gaussians.parent_opacity)
+            # loss_delta_scaling = torch.norm(self.trainer.gaussians._scaling - self.trainer.gaussians.parent_scaling)
+            # loss_delta_position = torch.norm(self.trainer.gaussians._xyz - self.trainer.gaussians.parent_position)
+            # if not self.trainer.config.style.densify:
+            # loss += (self.trainer.config.style.lambda_delta_opacity * loss_delta_opacity 
+            #         + self.trainer.config.style.lambda_delta_scaling * loss_delta_scaling)
+            
+            self.update(iteration, loss)
+            
+            if self.trainer.config.app.need_log:
+                wandb.log({
+                    "Loss": loss.item(),
+                    "Prior Loss": prior_loss.item(),
+                    "Content Loss": content_loss.item(),
+                    "ImgTV Loss": imgtv_loss.item(),
+                    "Depth Loss": depth_loss.item(),
+                    "Shape Loss": shape_loss.item()
+                })
+            
+        
+        return {
+            "Points": f"{self.trainer.gaussians._opacity.shape[0]}",
+            "Loss": f"{loss.item():.{7}f}"
+        }, timer.elapsed_ms
+
+    def _get_viewpoint_cam(self):
+        if not self.viewpoint_stack:
+            self.viewpoint_stack = self.trainer.scene.getTrainCameras()
+            self.viewpoint_len = len(self.viewpoint_stack)
+            self.viewpoint_idx = -1
+        self.viewpoint_idx = (self.viewpoint_idx + 1) % self.viewpoint_len
+        
+        last_cam = None
+        if self.viewpoint_idx != 0:
+            last_cam = self.viewpoint_stack[self.viewpoint_idx - 1]
+        curr_cam = self.viewpoint_stack[self.viewpoint_idx]
+        return last_cam, curr_cam

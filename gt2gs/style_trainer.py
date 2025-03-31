@@ -7,9 +7,15 @@ from gt2gs.style_utils import CUDATimer
 
 from gs.gaussian_renderer import network_gui, render
 from gt2gs.style_observer import TrainingMetrics
-from gt2gs.style_phase import StylizationPhase, PreProcessPhase, GeometryProtectPhase, PostProcessPhase
 from gt2gs.style_observer import TrainingObserver, ProgressTracker, CheckpointSaver
 from gt2gs.style_preprocess import preprocess
+
+from gt2gs.phase.geometry_phase.preprocess_phase import PreProcessPhase
+from gt2gs.phase.geometry_phase.postprocess_phase import PostProcessPhase
+from gt2gs.phase.geometry_phase.revise_phase import RevisePhase
+from gt2gs.phase.stylize_phase.nnfm_phase import NNFMPhase
+from gt2gs.phase.stylize_phase.prior_phase import PriorPhase
+from gt2gs.phase.other_phase.lock_parameter_phase import LockParameterPhase
 
 
 class StyleTrainer:
@@ -87,6 +93,8 @@ class StyleTrainer:
             self._load_checkpoint()
             
         self.gaussians.training_setup(self.config.opt)
+        self.gaussians._features_rest = torch.zeros_like(self.gaussians._features_rest, device=self.device).requires_grad_(False)
+        
         
         
     def _init_phases(self):
@@ -96,7 +104,7 @@ class StyleTrainer:
         self.phases = []
         self.total_iterations = 0
         
-        def _add_phase(phase, phase_name, num_iter):
+        def _add_phase(phase, phase_name, num_iter, enable_densify):
             if num_iter == 0:
                 return
             
@@ -107,21 +115,37 @@ class StyleTrainer:
             begin_iter = phase_iter
             end_iter = phase_iter + num_iter - 1
             
-            self.phases.append(phase(self, phase_uid, phase_name, begin_iter, end_iter))
+            self.phases.append(phase(self, phase_uid, phase_name, begin_iter, end_iter, enable_densify))
             
             phase_iter += num_iter
             phase_uid += 1
         
         
-        _add_phase(PreProcessPhase, "Pre Process", self.config.style.preprocess_iter)
+        _add_phase(PreProcessPhase, "Pre Process", self.config.style.preprocess_iter, self.config.style.pre_densify)
             
         for i in range(self.config.style.rounds):
-            _add_phase(StylizationPhase,     f"Stylization {i}", self.config.style.style_iter)
-            # _add_phase(GeometryProtectPhase, f"Geometry    {i}", self.config.style.geometry_iter)
+            enable_densify = self.config.style.stylize_densify and (i < 3)
+            
+            phase = PriorPhase if self.config.style.prior else NNFMPhase
+            phase_name = f"Prior {i}" if self.config.style.prior else f"NNFM {i}"
+            _add_phase(phase, phase_name, self.config.style.style_iter, enable_densify)
+            
+            # if enable_densify:
+            _add_phase(RevisePhase, f"Revise {i}", self.config.style.revise_iter, False)
+                
+            _add_phase(NNFMPhase,  f"NNFM {i}", self.config.style.style_iter, enable_densify)
+            
+            # if enable_densify:
+            #     _add_phase(RevisePhase, f"Revise {i}", self.config.style.revise_iter, False)
+            # if enable_densify:
+            _add_phase(RevisePhase, f"Revise {i}", self.config.style.revise_iter, False)
+                
+            # if i == 2:
+            #     _add_phase(LockParameterPhase, "Lock Parameter", 10, False)
         
-        _add_phase(PostProcessPhase, "Post Process", self.config.style.postpreprocess_iter)
+        _add_phase(PostProcessPhase, "Post Process", self.config.style.postpreprocess_iter, False)
         
-        print(phase_uid, phase_iter)
+        # print(phase_uid, phase_iter)
         
 
     def _init_observers(self):

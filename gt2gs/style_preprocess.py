@@ -281,7 +281,8 @@ def preprocess(trainer):
     # for i, image in enumerate(downscaled_style_images):
     #     # ic(image.shape)
     #     render_RGBcolor_images(f"./debug/downscaled_images/{i}.jpg", image)
-    color_transfer(trainer.ctx)
+    if trainer.config.style.color_transfer:
+        color_transfer(trainer.ctx)
     
     trainer.feature_extractor = FeatureExtractor()
     style_features_list, style_matrix_list = _init_style_features(trainer, downscaled_style_images)

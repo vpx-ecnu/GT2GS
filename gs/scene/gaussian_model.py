@@ -49,6 +49,7 @@ class GaussianModel:
         self.max_sh_degree = sh_degree  
         self._xyz = torch.empty(0, device="cuda")
         self._features_dc = torch.empty(0, device="cuda")
+        self._original_features_dc = torch.empty(0, device="cuda")
         self._features_rest = torch.empty(0, device="cuda")
         self._scaling = torch.empty(0, device="cuda")
         self._rotation = torch.empty(0, device="cuda")
@@ -70,6 +71,7 @@ class GaussianModel:
             self.active_sh_degree,
             self._xyz,
             self._features_dc,
+            self._original_features_dc,
             self._features_rest,
             self._scaling,
             self._rotation,
@@ -89,6 +91,7 @@ class GaussianModel:
         (self.active_sh_degree, 
         self._xyz, 
         self._features_dc, 
+        self._original_features_dc,
         self._features_rest,
         self._scaling, 
         self._rotation, 
@@ -151,37 +154,13 @@ class GaussianModel:
         mask[ind] = False
         self.prune_points(mask)
 
-    def create_from_pcd(self, pcd : BasicPointCloud, spatial_lr_scale : float):
-        self.spatial_lr_scale = spatial_lr_scale
-        fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()
-        fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())
-        features = torch.zeros((fused_color.shape[0], 3, (self.max_sh_degree + 1) ** 2)).float().cuda()
-        features[:, :3, 0 ] = fused_color
-        features[:, 3:, 1:] = 0.0
-
-        print("Number of points at initialisation : ", fused_point_cloud.shape[0])
-
-        dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().cuda()), 0.0000001)
-        scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3)
-        rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
-        rots[:, 0] = 1
-
-        opacities = inverse_sigmoid(0.1 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda"))
-
-        self._xyz = nn.Parameter(fused_point_cloud.requires_grad_(True))
-        self._features_dc = nn.Parameter(features[:,:,0:1].transpose(1, 2).contiguous().requires_grad_(True))
-        self._features_rest = nn.Parameter(features[:,:,1:].transpose(1, 2).contiguous().requires_grad_(True))
-        self._scaling = nn.Parameter(scales.requires_grad_(True))
-        self._rotation = nn.Parameter(rots.requires_grad_(True))
-        self._opacity = nn.Parameter(opacities.requires_grad_(True))
-        self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
-
     def training_setup(self, training_args):
         self.percent_dense = training_args.percent_dense
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.parent_opacity = torch.zeros_like(self.get_opacity, device="cuda")
-        self.parent_scaling = torch.zeros_like(self.parent_scaling, device="cuda")
+        self.parent_scaling = torch.zeros_like(self.get_scaling, device="cuda")
         self.parent_position = torch.zeros_like(self._xyz, device="cuda")
+        self._original_features_dc = torch.zeros_like(self._features_dc, device="cuda")
         self.sh_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
 
@@ -340,6 +319,7 @@ class GaussianModel:
         self.parent_opacity = self.parent_opacity[valid_points_mask]
         self.parent_scaling = self.parent_scaling[valid_points_mask]
         self.parent_position = self.parent_position[valid_points_mask]
+        self._original_features_dc = self._original_features_dc[valid_points_mask]
 
         self.denom = self.denom[valid_points_mask]
         self.max_radii2D = self.max_radii2D[valid_points_mask]
@@ -367,7 +347,7 @@ class GaussianModel:
         return optimizable_tensors
 
     def densification_postfix(self, new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation,
-                              new_parent_opacity, new_parent_scaling, new_parent_position):
+                              new_parent_opacity, new_parent_scaling, new_parent_position, new_original_features_dc):
         d = {"xyz": new_xyz,
         "f_dc": new_features_dc,
         "f_rest": new_features_rest,
@@ -386,6 +366,7 @@ class GaussianModel:
         self.parent_opacity = torch.cat((self.parent_opacity, new_parent_opacity), dim=0)
         self.parent_scaling = torch.cat((self.parent_scaling, new_parent_scaling), dim=0)
         self.parent_position = torch.cat((self.parent_position, new_parent_position), dim=0)
+        self._original_features_dc = torch.cat((self._original_features_dc, new_original_features_dc), dim=0)
         
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.sh_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
@@ -409,11 +390,12 @@ class GaussianModel:
         new_parent_opacity = self.parent_opacity[gaussian_mask].repeat(N, 1)
         new_parent_scaling = self.parent_scaling[gaussian_mask].repeat(N, 1)
         new_parent_position = self.parent_position[gaussian_mask].repeat(N, 1)
+        new_original_features_dc = self._original_features_dc[gaussian_mask].repeat(N, 1, 1)
         # ic(new_parent_opacity.shape)
         # ic(new_parent_scaling.shape)
         
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation,
-                                   new_parent_opacity, new_parent_scaling, new_parent_position)
+                                   new_parent_opacity, new_parent_scaling, new_parent_position, new_original_features_dc)
 
         prune_filter = torch.cat((gaussian_mask, torch.zeros(N * gaussian_mask.sum(), device="cuda", dtype=bool)))
         self.prune_points(prune_filter)
@@ -444,13 +426,14 @@ class GaussianModel:
         new_parent_opacity = self.parent_opacity[selected_pts_mask]
         new_parent_scaling = self.parent_scaling[selected_pts_mask]
         new_parent_position = self.parent_position[selected_pts_mask]
+        new_original_features_dc = self._original_features_dc[selected_pts_mask]
         # ic(self._opacity.shape, new_opacities.shape)
         # ic(self._scaling.shape, new_scaling.shape)
         # ic(self.parent_opacity.shape, new_parent_opacity.shape)
         # ic(self.parent_scaling.shape, new_parent_scaling.shape)
         
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation,
-                                   new_parent_opacity, new_parent_scaling, new_parent_position)
+                                   new_parent_opacity, new_parent_scaling, new_parent_position, new_original_features_dc)
 
     def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size):
         # grads = self.xyz_gradient_accum / self.denom
