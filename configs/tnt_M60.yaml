@@ -4,8 +4,8 @@ app:
   port: 6009
 model:
   data_device: cuda
-  model_path: /Datasets/radegs_0/tnt/truck
-  source_path: /Datasets/preprocessed_data/tnt/truck
+  model_path: /Datasets/radegs_0/tnt/M60
+  source_path: /Datasets/preprocessed_data/tnt/M60
 opt:
   style_densification_interval: 150
 style:

@@ -28,9 +28,10 @@ class StyleContext:
     style_image: Optional[torch.Tensor] = None  # [C, H, W]
     depth_images: Optional[torch.Tensor] = None # [N, C, H, W]
     
-    original_feats: Optional[torch.Tensor] = None # [N, C_feature, H//4, W//4]
-    style_feats: Optional[torch.Tensor] = None
-    style_matrix: Optional[torch.Tensor] = None
+    
+    # original_feats: Optional[torch.Tensor] = None # [N, C_feature, H//4, W//4]
+    # style_feats: Optional[torch.Tensor] = None
+    # style_matrix: Optional[torch.Tensor] = None
     
     
     style_features_list: list[torch.Tensor] = None
@@ -113,16 +114,16 @@ def color_transfer(ctx):
         color_tf[:3, 3:4] = tmp_vec.T
         return image_set, color_tf
     
-    original_pixels = ctx.scene_images.permute(0, 2, 3, 1)
-    original_size = original_pixels.size()
-    original_pixels = original_pixels.reshape(-1, 3)
+    original_pixels = ctx.scene_images.permute(0, 2, 3, 1)  # [N, C, H, W] -> [N, H, W, C]
+    original_size = original_pixels.size() 
+    original_pixels = original_pixels.reshape(-1, 3)        # [N, H, W, C] -> [N*H*W, C]
     
-    style_pixels = ctx.style_image.permute(1, 2, 0)
+    style_pixels = ctx.style_image.permute(1, 2, 0)         # [C, H, W] -> [H, W, C] 
     
-    color_transfered_pixels, color_tf = match_colors(original_pixels, style_pixels)
+    color_transfered_pixels, _ = match_colors(original_pixels, style_pixels)
     
     ctx.scene_images = color_transfered_pixels.reshape(*original_size)
-    ctx.scene_images = ctx.scene_images.permute(0, 3, 1, 2)
+    ctx.scene_images = ctx.scene_images.permute(0, 3, 1, 2) # [N, H, W, C] -> [N, C, H, W]
     
     
     
@@ -277,7 +278,7 @@ def generate_transformation_matrix(angle, shear_x, shear_y, image_width, image_h
     # Combine all the transformations
     final_matrix = np.dot(translation_matrix_back, np.dot(combined_matrix, translation_matrix_to_origin))
     
-    return final_matrix, combined_matrix
+    return final_matrix
 
     
 def center_crop(image, crop_size):
@@ -764,36 +765,24 @@ def get_enhanced_style_features(trainer, style_image):
     
     _, style_img_width, style_img_height = style_image.shape
     # ic(style_img_width, style_img_height)
-    # TODO: 
-    # 1. 考虑用clip替换聚类的pipeline
-    # 2. 对齐ref-npr的setting，可以有一个完全先验的特征图
-    # 3. ref-npr做实验，验证没有rgb loss，只有特征图loss情况下的结果
+    
     for i in range(0, 360):
-        # if (i != 30):
-        #     continue
-        # 先假设错切参数为0，旋转角度由i得到
+        
         Hx = Hy = 0
-        # TODO: 要保证是float格式
+        
         theta = i * 1.0
         
-        # 获得线性变换矩阵（包括旋转角度和错切参数）
-        M, M_parameter = generate_transformation_matrix(theta, Hx, Hy, style_img_width, style_img_height)
-        # ic(M.shape)
-        # 根据i获得增强后的图片
-        # new_image = F.affine(style_image, theta, [0,9], 1.0, [Hx, Hy], resample=Image.BICUBIC)
+        # Rotate Image with center crop and get initial features
+        M = generate_transformation_matrix(theta, Hx, Hy, style_img_width, style_img_height) # M: [3, 3]
         new_image = tensor_img_transformation(style_image, M, i)
-        # ic(new_image.shape)
-        # extract vgg feature
-        # self.style_feats.append(self.get_feats(style_image.unsqueeze(0)))
         img_feats = trainer.feature_extractor(new_image, False)
-        # exit(0)
         
-        # print(img_feats.shape)
+        
         ######################################################################
         # 不聚类
         if trainer.config.style.gta_type == "default":
             c, h, w = img_feats.shape
-            img_feats = img_feats.view(c, -1)
+            img_feats = img_feats.view(c, -1)  # [C, H, W] -> [C, H*W]
             _, num_clusters = img_feats.shape
         
         ######################################################################
@@ -801,7 +790,7 @@ def get_enhanced_style_features(trainer, style_image):
         if trainer.config.style.gta_type == "kmeans":
             # 处理为k-means可用形式
             c, h, w = img_feats.shape
-            img_feats_flat = img_feats.permute(1, 2, 0).reshape(-1, c)
+            img_feats_flat = img_feats.permute(1, 2, 0).reshape(-1, c)  # [C, H, W] -> [H*W, C]
             img_feats_np = img_feats_flat.cpu().numpy()
             
             # k-means
@@ -820,7 +809,7 @@ def get_enhanced_style_features(trainer, style_image):
             discretized_feats_flat = torch.tensor(cluster_centers, device=img_feats.device)
 
             # 将特征还原回原始形状 [c, -1]
-            img_feats = discretized_feats_flat.view(-1, c).permute(1, 0)
+            img_feats = discretized_feats_flat.view(-1, c).permute(1, 0) # [H*W, C] -> [C, H*W]
         
         ######################################################################
         # 裁剪
@@ -841,21 +830,16 @@ def get_enhanced_style_features(trainer, style_image):
         
         # 将新特征组加入总特征集合（当前未考虑深度分组）
         
-        enhanced_style_features.append(img_feats)
-        # trainer.ctx.style_feat.append(img_feats)
+        enhanced_style_features.append(img_feats) # [C, num_clusters]
         
-        # M_tensor = torch.from_numpy(M_parameter)
-        # 目前先只存了旋转角度，用于求loss，而不是
-        M_tensor = torch.tensor(theta)
-        matrix_list = torch.stack([M_tensor] * num_clusters).to("cuda").unsqueeze(0)
-        style_matrix.append(matrix_list)
-        # trainer.ctx.style_matrix.append(matrix_list)
+        matrix_list = torch.full((1, num_clusters), theta, device=trainer.device) # [1, num_clusters]
+        style_matrix.append(matrix_list) 
+        
 
-    enhanced_style_features = torch.cat(enhanced_style_features, dim=1)
-    style_matrix = torch.cat(style_matrix, dim=1)
+    enhanced_style_features = torch.cat(enhanced_style_features, dim=1) # [C, num_clusters * 360]
+    style_matrix = torch.cat(style_matrix, dim=1) # [1, num_clusters * 360]
+    
     return enhanced_style_features, style_matrix
-    # trainer.ctx.style_feat = torch.cat(trainer.ctx.style_feat, dim=1)
-    # trainer.ctx.style_matrix = torch.cat(trainer.ctx.style_matrix, dim=1)
     
 
 def compute_rotation_angles(A, B, fh, fw):
@@ -902,14 +886,14 @@ def compute_rotation_angles(A, B, fh, fw):
         A[top_right_x, top_right_y],
         A[bottom_left_x, bottom_left_y],
         A[bottom_right_x, bottom_right_y]
-    ], dim=2)
+    ], dim=2).float()
     
     B_S = torch.stack([
         B[top_left_x, top_left_y],
         B[top_right_x, top_right_y],
         B[bottom_left_x, bottom_left_y],
         B[bottom_right_x, bottom_right_y]
-    ], dim=2)
+    ], dim=2).float()
     
     # 批量中心化
     mu_a = A_S.mean(dim=2, keepdim=True)  # 形状 (fh, fw, 1, 2)

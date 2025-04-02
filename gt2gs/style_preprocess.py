@@ -14,7 +14,7 @@ from simple_knn._C import distCUDA2
 from gs.scene.gaussian_model import GaussianModel
 from gt2gs.style_utils import render_depth_or_mask_images
 from gt2gs.style_loss import FeatureExtractor
-
+import math
 
 def _init_depth_images(trainer):
     
@@ -194,72 +194,84 @@ def _init_add_gaussians(trainer):
     # exit(0)
     exit(0)        
 
-def _init_depth_clustering(trainer, depth_images):
+def _init_depth_group(trainer, depth_images):
     
-    depth_clustering_num = trainer.config.style.depth_clustering_num
-    depth_clustering_interval = 256 // depth_clustering_num
-    # ic(depth_clustering_num, depth_clustering_interval)
+    depth_group_num = trainer.config.style.depth_group_num
+    depth_group_interval = math.ceil(256 / depth_group_num)
+    
+    # ic(depth_group_num, depth_group_interval)
     
     depth_masks = torch.zeros_like(depth_images, device=trainer.device)
+    
     for i, depth_image in enumerate(depth_images):
         normalized_depth_image = normalize_depth_to_uint8(depth_image)
-        # ic(normalized_depth_image.max())
-        # ic(torch.logical_and(normalized_depth_image < 256, normalized_depth_image > 224).sum())
-        # ic((normalized_depth_image > 224).sum())
-        # ic((normalized_depth_image >= 256).sum())
-        for j in range(depth_clustering_num):
-            l_point, r_point = depth_clustering_interval * j, depth_clustering_interval * (j + 1) - 1
-            # ic(j, l_point, r_point)
-            mask = torch.logical_and(normalized_depth_image >= l_point, normalized_depth_image <= r_point)
-            # ic(mask.sum())
+        
+        for j in range(depth_group_num):
+            # [l_point, r_point]
+            l_point = depth_group_interval * j
+            r_point = min(255, depth_group_interval * (j + 1) - 1)
+            
+            mask = torch.logical_and(normalized_depth_image >= l_point, 
+                                     normalized_depth_image <= r_point)
+            
             depth_masks[i][mask] = j
+        # ic(scale_value[i])
+        # for j in range(len(scale_value[i]) - 1, -1, -1):
+        #     # ic(scale_value[i][j], scale_value[i][0])
+        #     scale_value[i][j] /= scale_value[i][0]
+            # ic(scale_value[i][j])
         # exit(0)
     # exit(0)
+    # for i, k in enumerate(depth_masks):
+    #     ic(i, k.shape)
+        
     return depth_masks
 
 def _init_style_downscaling(trainer, style_image):
     
-    c, h, w = style_image.shape
-    downscaling_num = trainer.config.style.depth_clustering_num
-    downscaled_style_images = []
+    _, h, w = style_image.shape
+    downscaling_num = trainer.config.style.depth_group_num
+    downscale_ratio = torch.linspace(1, trainer.config.style.downscale_limit_ratio, downscaling_num)
+    # ic(downscale_ratio)
+    # exit(0)
+    
+    downscaled_style_images_list = []
     for i in range(downscaling_num):
-        new_h = h // downscaling_num * (downscaling_num - i)
-        new_w = w // downscaling_num * (downscaling_num - i)
+        new_h = int(h / downscale_ratio[i])
+        new_w = int(w / downscale_ratio[i])
         
+        # ic(new_h)
         
-        downscaled_style_images.append(F.interpolate(style_image.unsqueeze(0),
-                                                     size=(new_h, new_w),
-                                                     mode='bilinear',
-                                                     align_corners=False,
-                                                     antialias=True).squeeze(0))
-        
-    return downscaled_style_images
+        downscaled_style_images_list.append(F.interpolate(style_image.unsqueeze(0),
+                                                         size=(new_h, new_w),
+                                                         mode='bilinear',
+                                                         align_corners=False,
+                                                         antialias=True).squeeze(0))
+    # exit(0)
+    return downscaled_style_images_list
 
 def _init_style_features(trainer, style_image_list):
     style_features_list = []
     style_matrix_list = []
+    
     for i, style_image in enumerate(style_image_list):
-        # print(i)
-        # if (i == 0):
-        #     continue
-        # style_features = trainer.feature_extractor(style_image, False)
-        # style_image_features.append(style_features.reshape(style_features.shape[0], -1))
+        
         style_features, style_matrix = get_enhanced_style_features(trainer, style_image)
-        # ic(style_features.shape, style_matrix.shape)
         style_features_list.append(style_features)
         style_matrix_list.append(style_matrix)
         
     return style_features_list, style_matrix_list
 
 def _init_scene_features(trainer, scene_images, masks):
-    depth_clustering_num = trainer.config.style.depth_clustering_num
+    depth_group_num = trainer.config.style.depth_group_num
 
     scene_features_list = []
     scene_features_mask_list = []
     for i, scene_image in enumerate(scene_images):
         features = trainer.feature_extractor(scene_image)
+        # ic(masks[i].shape)
         downscaled_masks = labels_downscale(masks[i], features.shape[-2:])
-        features_list = get_separated_list(features, downscaled_masks, depth_clustering_num)
+        features_list = get_separated_list(features, downscaled_masks, depth_group_num)
         scene_features_list.append(features_list)
         scene_features_mask_list.append(downscaled_masks)
     
@@ -272,20 +284,22 @@ def preprocess(trainer):
     _init_depth_images(trainer)
     _init_style_images(trainer)
     
-    depth_masks = _init_depth_clustering(trainer, trainer.ctx.depth_images)
-    
+    depth_masks = _init_depth_group(trainer, trainer.ctx.depth_images)
+    # for i, v in enumerate(scale_value):
+    #     ic(v)
     # for i, depth_mask in enumerate(depth_masks):
     #     render_depth_or_mask_images(f"./debug/depth_mask/{i}.jpg", depth_mask)
+    # exit(0)
     
-    downscaled_style_images = _init_style_downscaling(trainer, trainer.ctx.style_image)
-    # for i, image in enumerate(downscaled_style_images):
+    downscaled_style_images_list = _init_style_downscaling(trainer, trainer.ctx.style_image)
+    # for i, image in enumerate(downscaled_style_images_list):
     #     # ic(image.shape)
     #     render_RGBcolor_images(f"./debug/downscaled_images/{i}.jpg", image)
     if trainer.config.style.color_transfer:
         color_transfer(trainer.ctx)
     
     trainer.feature_extractor = FeatureExtractor()
-    style_features_list, style_matrix_list = _init_style_features(trainer, downscaled_style_images)
+    style_features_list, style_matrix_list = _init_style_features(trainer, downscaled_style_images_list)
     
     # for i, style_features in enumerate(style_features_list):
     #     ic(style_features.shape)
@@ -303,7 +317,6 @@ def preprocess(trainer):
     trainer.ctx.scene_features_list = scene_features_list
     trainer.ctx.scene_features_mask_list = scene_features_mask_list
     
-    # exit(0)
     
     # _init_add_gaussians(trainer)
     

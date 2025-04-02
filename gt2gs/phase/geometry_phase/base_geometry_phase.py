@@ -10,25 +10,16 @@ class GeometryPhase(TrainingPhase):
     def on_iteration(self, iteration: int) -> Dict[str, torch.Tensor]:
         
         viewpoint_cam = self._get_viewpoint_cam()
-        # viewpoint_cam = self.trainer.scene.getTrainCameras()[0]
         
         with self.trainer.timer as timer:
             
             self.render_pkg = self.trainer.get_render_pkgs(viewpoint_cam)
             render_image = self.render_pkg["render"]
-            # render_depth = self.render_pkg["depth"]
             original_image = self.trainer.ctx.scene_images[viewpoint_cam.uid]
-            # curr_depth = self.trainer.ctx.depth_images[viewpoint_cam.uid]
-            
-            # render_depth = self.render_pkg["depth"]
-            # original_depth = self.trainer.ctx.depth_images[viewpoint_cam.uid]
-            # concat_and_save_images("./image.jpg", original_image, render_image, original_depth, render_depth)
-
             
             Ll1 = l1_loss(render_image, original_image)
             ssim_val = ssim(render_image, original_image)
             
-            # concat_and_save_images("./image.jpg", original_image, render_image, curr_depth, render_depth)  
             loss = (
                 (1.0 - self.trainer.config.opt.lambda_dssim) * Ll1 + 
                 self.trainer.config.opt.lambda_dssim * (1.0 - ssim_val)
@@ -54,7 +45,7 @@ class GeometryPhase(TrainingPhase):
         #     gaussians.reset_opacity()
         
         if (
-            (iteration - self.start_iter) % opt.densification_interval == 0 and 
+            (iteration - self.start_iter + 1) % opt.densification_interval == 0 and 
             (iteration - self.start_iter) <= (self.end_iter - self.start_iter + 1) // 2
         ):
             tmp = torch.max(gaussians.get_scaling, dim=1).values

@@ -13,23 +13,22 @@ class NNFMPhase(StylizePhase):
         
         with self.trainer.timer as timer:
             
-            
             self.render_pkg = self.trainer.get_render_pkgs(viewpoint_cam)
             render_image = self.render_pkg["render"]
             
             self.render_feat = self.feature_extractor(render_image)
             
             curr_scene_features_mask = self.trainer.ctx.scene_features_mask_list[viewpoint_cam.uid]
-            depth_clustering_num = self.trainer.config.style.depth_clustering_num
+            depth_group_num = self.trainer.config.style.depth_group_num
             render_features_list = get_separated_list(self.render_feat, 
                                                       curr_scene_features_mask,
-                                                      depth_clustering_num)
+                                                      depth_group_num)
             
             fc, fh, fw = self.render_feat.shape
             target_feat = torch.zeros((fc, fh, fw), device=self.render_feat.device)
             target_matrix = torch.zeros((1, fh, fw), device=self.render_feat.device)
             
-            for i in range(depth_clustering_num):
+            for i in range(depth_group_num):
                 mask = (curr_scene_features_mask == i)
                 if mask.sum() == 0:
                     continue
@@ -52,26 +51,19 @@ class NNFMPhase(StylizePhase):
             curr_depth = self.trainer.ctx.depth_images[viewpoint_cam.uid]
             depth_loss = torch.mean((render_depth - curr_depth) ** 2)
             
-            prior_loss = cos_distance(target_feat, self.render_feat)
+            nnfm_loss = cos_distance(target_feat, self.render_feat)
             content_loss = content_loss_fn(render_features_list, 
                                            self.trainer.ctx.scene_features_list[viewpoint_cam.uid])
-            
-            # content_loss = torch.mean((self.render_feat - self.original_feats[viewpoint_cam.uid]) ** 2) 
             
             top2_values, _ = torch.topk(self.trainer.gaussians.get_scaling, k=2, dim=1) 
             shape_loss = (top2_values[:, 0] / top2_values[:, 1]).mean()
             imgtv_loss = get_imgtv_loss(render_image)
             
-            # concat_and_save_images("./image.jpg", curr_image, render_image, curr_depth, render_depth)
-            # if not self.trainer.config.style.densify:
-            # ic(loss_delta_opacity, loss_delta_scaling)
-            # exit(0)
-            # ic(loss_delta_scaling, loss_delta_opacity)
             
             loss = (
                 # Todo: check consistent_loss
                 self.trainer.config.style.lambda_consistent_loss * consistent_loss
-                + self.trainer.config.style.lambda_prior_loss * prior_loss
+                + self.trainer.config.style.lambda_nnfm_loss * nnfm_loss
                 + self.trainer.config.style.lambda_content_loss * content_loss
                 + self.trainer.config.style.lambda_imgtv_loss * imgtv_loss
                 + self.trainer.config.style.lambda_depth_loss * depth_loss
@@ -83,7 +75,7 @@ class NNFMPhase(StylizePhase):
             if self.trainer.config.app.need_log:
                 wandb.log({
                     "Loss": loss.item(),
-                    "Prior Loss": prior_loss.item(),
+                    "Prior Loss": nnfm_loss.item(),
                     "Content Loss": content_loss.item(),
                     "ImgTV Loss": imgtv_loss.item(),
                     "Depth Loss": depth_loss.item(),

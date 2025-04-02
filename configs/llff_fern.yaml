@@ -12,7 +12,6 @@ style:
 
   color_transfer: true
   # densify: true
-  geometry_iter: 0
   gta_type: clip
   init_densification_downsample: 2
   init_densification_image_intervals: 10
@@ -28,8 +27,7 @@ style:
   preprocess_iter: 400
   prior: false
   
-  rounds: 10
-
   style_image: ./styles/black_white.jpg
 
-  style_iter: 60
+  enable_geometry_correction: true
+

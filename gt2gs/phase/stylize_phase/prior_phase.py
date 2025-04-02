@@ -32,10 +32,10 @@ class PriorPhase(StylizePhase):
             
             self.render_feat = self.feature_extractor(render_image)
             curr_scene_features_mask = self.trainer.ctx.scene_features_mask_list[curr_cam.uid]
-            depth_clustering_num = self.trainer.config.style.depth_clustering_num
+            depth_group_num = self.trainer.config.style.depth_group_num
             render_features_list = get_separated_list(self.render_feat, 
                                                       curr_scene_features_mask,
-                                                      depth_clustering_num)
+                                                      depth_group_num)
             
             # Calculate depth loss
             render_depth = self.render_pkg["depth"]
@@ -47,72 +47,36 @@ class PriorPhase(StylizePhase):
                 # input: 给定reference图的特征图 or mask+对应区域特征图角度控制
                 # TODO: mask额外接入or单独接入
                 # TODO: 跑NNST获得reference图
-                # if self.trainer.config.style.ref_image:
-                #     target_feat = 
-                #     target_matrix = 
-                # elif self.trainer.config.style.ref_mask:
-                #     target_feat = 
-                #     target_matrix = 
-                # else:
-                #     target_feat = 
-                #     target_matrix = 
-                    # pass
-                    
-                theta = self.trainer.config.style.theta
-                # target_feat_list = []
-                # target_matrix_list = []
                 
+                theta = self.trainer.config.style.theta
                 
                 fc, fh, fw = self.render_feat.shape
                 target_feat = torch.zeros((fc, fh, fw), device=self.render_feat.device)
                 target_matrix = torch.zeros((1, fh, fw), device=self.render_feat.device)
                 
-                for i in range(depth_clustering_num):
+                for i in range(depth_group_num):
                     mask = (curr_scene_features_mask == i)
                     if mask.sum() == 0:
                         continue
-                    # self.feature_extractor(ref_image)
+                    
                     style_feat = self.trainer.ctx.style_features_list[i]
                     style_matrix = self.trainer.ctx.style_matrix_list[i]
                     scene_features = self.trainer.ctx.scene_features_list[curr_cam.uid][i]
                     
-                    tmp_val = style_feat.shape[1] // 360
-                    A = style_feat[:, theta * tmp_val: (theta + 1) * tmp_val]
-                    A_mat = style_matrix[:, theta * tmp_val: (theta + 1) * tmp_val]
+                    num_clusters = style_feat.shape[1] // 360
+                    A = style_feat[:, theta * num_clusters: (theta + 1) * num_clusters]
+                    A_mat = style_matrix[:, theta * num_clusters: (theta + 1) * num_clusters]
                     
-                    A_indices = torch.randint(0, tmp_val - 1, (fc, scene_features.shape[1]), device=style_feat.device)
-                    A_mat_indices = torch.randint(0, tmp_val - 1, (1, scene_features.shape[1]), device=style_feat.device)
+                    A_indices = torch.randint(0, num_clusters - 1, 
+                                              (fc, scene_features.shape[1]), device=style_feat.device)
+                    A_mat_indices = torch.randint(0, num_clusters - 1, 
+                                                  (1, scene_features.shape[1]), device=style_feat.device)
                     
-                    # ic(torch.gather(A, 1, A_indices).shape)
                     target_feat[:, mask] = torch.gather(A, 1, A_indices)
-                    # ic(torch.gather(A_mat, 1, A_mat_indices).shape)
-                    # ic(mask.shape)
                     target_matrix[:, mask] = torch.gather(A_mat, 1, A_mat_indices)
                     
                     
                 consistent_loss = 0
-                # exit(0)
-                    # for i in range(fc):
-                    #     C[i, :] = A[i, A_indices[i]]
-                    # for i in range(matc):
-                    #     C_mat[i, :] = A_mat[i, A_mat_indices[i]]
-                        
-                    # assert (C == torch.gather(A, 1, A_indices)).all()
-                    # assert (C_mat == torch.gather(A_mat, 1, A_mat_indices)).all()
-                    
-                    # C = torch.gather(A, 1, A_indices)
-                    # C_mat = torch.gather(A_mat, 1, A_indices)
-                    
-                    # B_indices = torch.randint(0, 5, (fc, fh - fh // 2, fw))
-                    # for i in range(fc):
-                    #     C[i, fh // 2:, :] = B[i, B_indices[i]]
-                    # for i in range(matc):
-                    #     C_mat[i, fh // 2:, :] = B_mat[i, B_indices[i]]
-                    # A_expanded = setA.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, fh, fw)
-                    # B_expanded = setB.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, fh, fw)
-                    # upper_half = A_expanded[:, :h//2, :, :]
-                    # lower_half = B_expanded[:, h//2:, :, :]
-                    # C = torch.cat((upper_half, lower_half), dim=1)
             else:
                 
                 
@@ -136,20 +100,8 @@ class PriorPhase(StylizePhase):
                     
                     threshold = 0.3
                     # 生成 mask：如果颜色差异小于阈值，mask 为 1，否则为 0
-                    trans_mask = (diff < threshold).float()
-                trans_image = trans_mask * warped_frame2 + (1 - trans_mask) * curr_image
-                    
-                trans_feat = self.feature_extractor(trans_image)
-                # trans_feat_list = get_separated_list(trans_image, 
-                #                                      curr_scene_features_mask,
-                #                                      depth_clustering_num)
-                # TODO: 动态维护
-                consistent_loss = cos_distance(self.prior_target, trans_feat)
-                    ############################
-                    
-                    # 读入先验数据
-                    # prior_target和prior_matrix还需要进行双线性插值进行转换才可以使用
-                with torch.no_grad():
+                    trans_mask = torch.logical_and(diff < threshold, mask2.squeeze()).int()
+
                     # TODO: 动态维护(done)
                     prior_target = self.prior_target
                     # TODO：按照几何进行改变(done-旋转)
@@ -164,7 +116,6 @@ class PriorPhase(StylizePhase):
                     # pos_pre为变换到前一个像素的
                     # 记得转成float
                     pos = torch.stack([grid_i, grid_j], dim=-1)
-                    pos_float = pos * 1.0
                     
                     # 处理先验mask和对应问题
                     _, fh, fw = self.render_feat.shape
@@ -183,9 +134,8 @@ class PriorPhase(StylizePhase):
                     # TODO: 用仿射变换矩阵修改先验矩阵(done-原始角度+新角度)
                     
                     # TODO: 解开注释
-                    rotation = compute_rotation_angles(pos_pre, pos_float, fh, fw)
-                    prior_matrix = prior_matrix + rotation
-                    
+                    rotation = compute_rotation_angles(pos_pre, pos, fh, fw)
+                    prior_matrix = (prior_matrix + rotation) % 360
                     
                     # 获得先验mask, 构建特征图大小的mask
                     prior_idx = torch.zeros(fh, fw, 2).to(prior_target.device)
@@ -211,13 +161,13 @@ class PriorPhase(StylizePhase):
                     
                     prior_mask_list = get_separated_list(prior_mask.unsqueeze(0), 
                                                          curr_scene_features_mask,
-                                                         depth_clustering_num)
+                                                         depth_group_num)
                     prior_feature_list = get_separated_list(prior_feats, 
                                                             curr_scene_features_mask,
-                                                            depth_clustering_num)
+                                                            depth_group_num)
                     prior_matrix_list = get_separated_list(prior_matrix, 
                                                            curr_scene_features_mask,
-                                                           depth_clustering_num)
+                                                           depth_group_num)
                     
                     fc, fh, fw = self.render_feat.shape
                     target_feat = torch.zeros((fc, fh, fw), device=self.render_feat.device)
@@ -225,7 +175,7 @@ class PriorPhase(StylizePhase):
                     
                     # ic(prior_mask.shape, prior_feats.shape, prior_matrix.shape)
                     # exit(0)
-                    for i in range(depth_clustering_num):
+                    for i in range(depth_group_num):
                         mask = (curr_scene_features_mask == i)
                         if mask.sum() == 0:
                             continue
@@ -248,22 +198,6 @@ class PriorPhase(StylizePhase):
                         target_feat[:, mask] = curr_target_feat
                         target_matrix[:, mask] = curr_target_matrix
                         
-                        
-                    
-                        # target_feat, target_matrix = (
-                        #     self.render_feat, self.style_feat, self.style_matrix,
-                        #     prior_mask, prior_feats, prior_matrix
-                        # )
-                    
-            
-                # print("111:", target_feat.mean(), target_matrix.mean())
-                # exit(0)
-            
-            
-                # trans_mask = self.trans_mask[(last_cam.uid, curr_cam.uid)]
-                # trans_depth = self.trans_depth[(last_cam.uid, curr_cam.uid)]
-                # trans_pos = self.trans_pos[(last_cam.uid, curr_cam.uid)]
-            
                 
             self._update_target(curr_cam.uid, target_feat, target_matrix)
             
@@ -283,6 +217,7 @@ class PriorPhase(StylizePhase):
             # exit(0)
             # ic(loss_delta_scaling, loss_delta_opacity)
             
+            consistent_loss = 0
             loss = (
                 # Todo: check consistent_loss
                 self.trainer.config.style.lambda_consistent_loss * consistent_loss

@@ -30,7 +30,7 @@ class OptimizationConfig(Serializable):
     position_lr_final: float = 0.0000016
     position_lr_delay_mult: float = 0.01
     position_lr_max_steps: int = 30_000
-    feature_lr: float = 0.025
+    feature_lr: float = 0.008
     opacity_lr: float = 0.05
     scaling_lr: float = 0.005
     rotation_lr: float = 0.001
@@ -73,15 +73,18 @@ class StyleConfig(Serializable):
     no_grad: bool = field(False, action="store_true")
     stylize_densify: bool = field(False, action="store_true")
     pre_densify: bool = field(False, action="store_true")
-    lambda_consistent_loss: float = 2
+    lambda_consistent_loss: float = 0
     lambda_prior_loss: float = 2
+    lambda_nnfm_loss: float = 2
     lambda_content_loss: float = 0.005
     lambda_imgtv_loss: float = 0.02
-    lambda_depth_loss: float = 0.01
+    lambda_depth_loss: float = 0
     lambda_shape_loss: float = 0.1
     lambda_delta_opacity: float = 0
     lambda_delta_scaling: float = 0
     lambda_delta_position: float = 1
+    
+    enable_geometry_correction: bool = field(False, action="store_true")
     
     color_transfer: bool = field(False, action="store_true")
     preprocess_iter: int = 400
@@ -98,7 +101,8 @@ class StyleConfig(Serializable):
     init_densification_image_intervals: int = 10
     init_densification_downsample: int = 2
     
-    log2_depth_clustering_num: int = 2
+    depth_group_num: int = 3
+    downscale_limit_ratio: int = 2
     
     prior: bool = field(False, action="store_true")
     theta: int = 0
@@ -139,8 +143,6 @@ class ConfigManager(Serializable):
     def _check_params(self):
         assert os.path.exists(self.style.style_image), f"{self.style.style_image} does not exists."
         
-        assert self.style.log2_depth_clustering_num <= 6, "log2_depth_clustering_num can not exceed 6"
-        self.style.depth_clustering_num = pow(2, self.style.log2_depth_clustering_num)
         
         assert self.style.theta >= 0 and self.style.theta <= 359, "theta mush between 0 and 359"
         

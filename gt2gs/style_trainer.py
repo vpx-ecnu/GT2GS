@@ -124,24 +124,28 @@ class StyleTrainer:
         _add_phase(PreProcessPhase, "Pre Process", self.config.style.preprocess_iter, self.config.style.pre_densify)
             
         for i in range(self.config.style.rounds):
-            enable_densify = self.config.style.stylize_densify and (i < 3)
+            enable_densify = self.config.style.stylize_densify and (i < self.config.style.rounds // 2)
             
             phase = PriorPhase if self.config.style.prior else NNFMPhase
             phase_name = f"Prior {i}" if self.config.style.prior else f"NNFM {i}"
             _add_phase(phase, phase_name, self.config.style.style_iter, enable_densify)
             
-            # if enable_densify:
-            _add_phase(RevisePhase, f"Revise {i}", self.config.style.revise_iter, False)
+            if self.config.style.enable_geometry_correction:
+                _add_phase(RevisePhase, f"Revise {i}", self.config.style.revise_iter, False)
                 
             _add_phase(NNFMPhase,  f"NNFM {i}", self.config.style.style_iter, enable_densify)
             
-            # if enable_densify:
-            #     _add_phase(RevisePhase, f"Revise {i}", self.config.style.revise_iter, False)
-            # if enable_densify:
-            _add_phase(RevisePhase, f"Revise {i}", self.config.style.revise_iter, False)
+            if self.config.style.enable_geometry_correction:
+                _add_phase(RevisePhase, f"Revise {i}", self.config.style.revise_iter, False)
                 
             # if i == 2:
             #     _add_phase(LockParameterPhase, "Lock Parameter", 10, False)
+        # _add_phase(LockParameterPhase, f"Lock Parameter", 10, False)
+        # _add_phase(NNFMPhase, "Last NNFM", self.config.style.revise_iter, False)
+        # _add_phase(NNFMPhase, "Last NNFM", self.config.style.revise_iter, False)
+        # _add_phase(NNFMPhase, "Last NNFM", self.config.style.revise_iter, False)
+        # _add_phase(NNFMPhase, "Last NNFM", self.config.style.revise_iter, False)
+        # _add_phase(NNFMPhase, "Last NNFM", self.config.style.revise_iter, False)
         
         _add_phase(PostProcessPhase, "Post Process", self.config.style.postpreprocess_iter, False)
         
