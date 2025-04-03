@@ -840,7 +840,16 @@ def get_enhanced_style_features(trainer, style_image):
     style_matrix = torch.cat(style_matrix, dim=1) # [1, num_clusters * 360]
     
     return enhanced_style_features, style_matrix
-    
+
+
+@torch.no_grad
+def get_original_style_features(trainer, style_image):
+    style_features = trainer.feature_extractor(style_image, False)
+    c, h, w = style_features.shape
+    style_matrix = torch.zeros((1, h * w), device=style_features.device)
+    style_features = style_features.reshape(c, -1)
+    return style_features, style_matrix
+
 
 def compute_rotation_angles(A, B, fh, fw):
     """

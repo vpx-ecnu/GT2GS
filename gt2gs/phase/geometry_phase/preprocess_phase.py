@@ -9,7 +9,7 @@ class PreProcessPhase(GeometryPhase):
     # @torch.no_grad
     # def on_phase_start(self):
     #     pass
-        # if self.config.style.color_transfer:
+        # if self.config.style.enable_color_transfer:
         #     color_transfer(self.trainer.ctx)
             
     # @torch.no_grad

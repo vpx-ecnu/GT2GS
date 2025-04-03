@@ -10,7 +10,12 @@ model:
 style:
   # stylized_model_path: output/2025-03-28_17-28-33
 
-  color_transfer: true
+  enable_stylize_densify: true
+  enable_geometry_correction: true
+  enable_nnfm_correction: true
+  enable_color_transfer: true
+  enable_feature_enhancement: true
+  enable_prior: false
   # densify: true
   gta_type: clip
   init_densification_downsample: 2
@@ -25,8 +30,6 @@ style:
   no_grad: false
   postpreprocess_iter: 400
   preprocess_iter: 400
-  prior: false
   
   style_image: ./styles/black_white.jpg
-  enable_geometry_correction: true
 

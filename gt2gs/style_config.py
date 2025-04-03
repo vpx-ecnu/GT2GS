@@ -13,15 +13,15 @@ class ModelConfig(Serializable):
     model_path: str = field(None, alias="-m")
     images: str = field("images", alias="-i")
     resolution: int = field(-1, alias="-r")
-    white_background: bool = field(False, action="store_true")
+    white_background: bool = False
     data_device: str = "cuda"
-    eval: bool = field(False, action="store_true")
+    eval: bool = False
     
 @dataclass
 class PipelineConfig(Serializable):
-    convert_SHs_python: bool = field(False, action="store_true")
-    compute_cov3D_python: bool = field(False, action="store_true")
-    debug: bool = field(False, action="store_true")
+    convert_SHs_python: bool = False
+    compute_cov3D_python: bool = False
+    debug: bool = False
     
 @dataclass
 class OptimizationConfig(Serializable):
@@ -40,7 +40,7 @@ class OptimizationConfig(Serializable):
     opacity_reset_interval: int = 10000  # not used
     
     densify_grad_threshold: float = 0.0002
-    random_background: bool = field(False, action="store_true")
+    random_background: bool = False
     
     
     style_densification_interval: int = 50
@@ -52,9 +52,9 @@ class ApplicationConfig(Serializable):
     ip: str = "127.0.0.1"
     port: int = 6009
     debug_from: int = -1
-    detect_anomaly: bool = field(False, action="store_true")
-    quiet: bool = field(False, action="store_true")
-    need_log: bool = field(False, action="store_true")
+    detect_anomaly: bool = False
+    quiet: bool = False
+    need_log: bool = False
     
 @dataclass
 class CheckpointConfig(Serializable):
@@ -70,9 +70,9 @@ class StyleConfig(Serializable):
     
     name: str = "default"
     gta_type: str = "default"
-    no_grad: bool = field(False, action="store_true")
-    stylize_densify: bool = field(False, action="store_true")
-    pre_densify: bool = field(False, action="store_true")
+    no_grad: bool = False
+    
+    
     lambda_consistent_loss: float = 0
     lambda_prior_loss: float = 2
     lambda_nnfm_loss: float = 2
@@ -84,12 +84,17 @@ class StyleConfig(Serializable):
     lambda_delta_scaling: float = 0
     lambda_delta_position: float = 1
     
-    enable_geometry_correction: bool = field(False, action="store_true")
+    enable_stylize_densify: bool = False
+    pre_densify: bool = False
+    enable_geometry_correction: bool = False  
+    enable_nnfm_correction: bool = False
+    enable_color_transfer: bool = False
+    enable_feature_enhancement: bool = False
+    enable_prior: bool = False
     
-    color_transfer: bool = field(False, action="store_true")
     preprocess_iter: int = 400
     postpreprocess_iter: int = 400
-    revise_iter: int = 400
+    correction_iter: int = 400
     
     rounds: int = 10
     style_iter: int = 80
@@ -104,7 +109,6 @@ class StyleConfig(Serializable):
     depth_group_num: int = 3
     downscale_limit_ratio: int = 2
     
-    prior: bool = field(False, action="store_true")
     theta: int = 0
 
 @dataclass
@@ -146,6 +150,8 @@ class ConfigManager(Serializable):
         
         assert self.style.theta >= 0 and self.style.theta <= 359, "theta mush between 0 and 359"
         
+        if self.style.enable_prior:
+            assert self.style.enable_feature_enhancement, "prior loss requires enable_feature_enhancement"
 
     def _save_args(self):
         

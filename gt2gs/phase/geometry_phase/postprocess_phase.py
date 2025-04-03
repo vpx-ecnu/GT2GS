@@ -13,5 +13,5 @@ class PostProcessPhase(GeometryPhase):
             pkg = self.trainer.get_render_pkgs(view)
             self.trainer.ctx.scene_images[i] = pkg["render"].detach()
             
-        if self.config.style.color_transfer:
+        if self.config.style.enable_color_transfer:
             color_transfer(self.trainer.ctx)

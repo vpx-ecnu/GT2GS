@@ -8,7 +8,7 @@ from gs.utils.loss_utils import l1_loss
 from gs.utils.loss_utils import ssim
 import wandb
 
-class RevisePhase(GeometryPhase):
+class CorrectionPhase(GeometryPhase):
     
     def swap_features(self, new_features):
         original_features = self.trainer.gaussians._features_dc.clone().detach()
@@ -37,9 +37,9 @@ class RevisePhase(GeometryPhase):
         # optimizable_tensors = self.trainer.gaussians.replace_tensor_to_optimizer(new_features_dc, "f_dc")
         # self.trainer.gaussians._features_dc = optimizable_tensors["f_dc"]
     
-    def update(self, iteration, loss):
-        super().update(iteration, loss)
-        render_RGBcolor_images("./image.jpg", self.render_pkg["render"])
+    # def update(self, iteration, loss):
+    #     super().update(iteration, loss)
+    #     render_RGBcolor_images("./image.jpg", self.render_pkg["render"])
         
         
     def on_iteration(self, iteration: int):

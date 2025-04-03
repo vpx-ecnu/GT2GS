@@ -6,13 +6,15 @@ model:
   data_device: cuda
   model_path: /Datasets/radegs_0/tnt/truck
   source_path: /Datasets/preprocessed_data/tnt/truck
-opt:
-  style_densification_interval: 150
 style:
   # stylized_model_path: output/2025-03-28_17-28-33
 
-  color_transfer: true
-  stylize_densify: true
+  enable_stylize_densify: true
+  enable_geometry_correction: true
+  enable_nnfm_correction: true
+  enable_color_transfer: true
+  enable_feature_enhancement: true
+  enable_prior: false
 
   geometry_iter: 0
   gta_type: clip
@@ -28,13 +30,13 @@ style:
   no_grad: false
   postpreprocess_iter: 1000
   preprocess_iter: 1000
-  prior: false
+  enable_prior: false
   
   rounds: 6
 
   style_image: ./styles/black_white.jpg
 
   style_iter: 400
-  revise_iter: 1000
+  correction_iter: 1000
   enable_geometry_correction: true
   

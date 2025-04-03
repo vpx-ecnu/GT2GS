@@ -16,11 +16,12 @@ from gt2gs.style_utils import render_viewpoint
 def main():
     
     seed = 42
+    np.random.seed(seed)
     random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     
-    config = parse_args()  
+    config = parse_args()
     if config.app.need_log:
         wandb.init(
             project="Texture-GS",

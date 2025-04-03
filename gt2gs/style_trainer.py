@@ -12,11 +12,11 @@ from gt2gs.style_preprocess import preprocess
 
 from gt2gs.phase.geometry_phase.preprocess_phase import PreProcessPhase
 from gt2gs.phase.geometry_phase.postprocess_phase import PostProcessPhase
-from gt2gs.phase.geometry_phase.revise_phase import RevisePhase
+from gt2gs.phase.geometry_phase.correction_phase import CorrectionPhase
 from gt2gs.phase.stylize_phase.nnfm_phase import NNFMPhase
 from gt2gs.phase.stylize_phase.prior_phase import PriorPhase
 from gt2gs.phase.other_phase.lock_parameter_phase import LockParameterPhase
-
+from icecream import ic
 
 class StyleTrainer:
     
@@ -124,28 +124,20 @@ class StyleTrainer:
         _add_phase(PreProcessPhase, "Pre Process", self.config.style.preprocess_iter, self.config.style.pre_densify)
             
         for i in range(self.config.style.rounds):
-            enable_densify = self.config.style.stylize_densify and (i < self.config.style.rounds // 2)
-            
-            phase = PriorPhase if self.config.style.prior else NNFMPhase
-            phase_name = f"Prior {i}" if self.config.style.prior else f"NNFM {i}"
+            enable_densify = self.config.style.enable_stylize_densify and (i < self.config.style.rounds // 2)
+            # ic(enable_densify)
+            phase = PriorPhase if self.config.style.enable_prior else NNFMPhase
+            phase_name = f"Prior {i}" if self.config.style.enable_prior else f"NNFM {i}"
             _add_phase(phase, phase_name, self.config.style.style_iter, enable_densify)
             
             if self.config.style.enable_geometry_correction:
-                _add_phase(RevisePhase, f"Revise {i}", self.config.style.revise_iter, False)
-                
-            _add_phase(NNFMPhase,  f"NNFM {i}", self.config.style.style_iter, enable_densify)
+                _add_phase(CorrectionPhase, f"Correction {i}", self.config.style.correction_iter, False)
             
-            if self.config.style.enable_geometry_correction:
-                _add_phase(RevisePhase, f"Revise {i}", self.config.style.revise_iter, False)
+            if self.config.style.enable_nnfm_correction:
+                _add_phase(NNFMPhase,  f"NNFM {i}", self.config.style.style_iter, enable_densify)
+                if self.config.style.enable_geometry_correction:
+                    _add_phase(CorrectionPhase, f"Correction {i}", self.config.style.correction_iter, False)
                 
-            # if i == 2:
-            #     _add_phase(LockParameterPhase, "Lock Parameter", 10, False)
-        # _add_phase(LockParameterPhase, f"Lock Parameter", 10, False)
-        # _add_phase(NNFMPhase, "Last NNFM", self.config.style.revise_iter, False)
-        # _add_phase(NNFMPhase, "Last NNFM", self.config.style.revise_iter, False)
-        # _add_phase(NNFMPhase, "Last NNFM", self.config.style.revise_iter, False)
-        # _add_phase(NNFMPhase, "Last NNFM", self.config.style.revise_iter, False)
-        # _add_phase(NNFMPhase, "Last NNFM", self.config.style.revise_iter, False)
         
         _add_phase(PostProcessPhase, "Post Process", self.config.style.postpreprocess_iter, False)
         
