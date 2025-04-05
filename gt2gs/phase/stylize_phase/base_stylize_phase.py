@@ -6,9 +6,9 @@ from torch import nn
 
 class StylizePhase(TrainingPhase):
     
-    def update(self, iteration, loss):
-        super().update(iteration, loss)
-        render_RGBcolor_images("./image.jpg", self.render_pkg["render"])
+    # def update(self, iteration, loss):
+    #     super().update(iteration, loss)
+    #     render_RGBcolor_images("./image.jpg", self.render_pkg["render"])
     
     @torch.no_grad
     def _densification(self, iteration: int):
