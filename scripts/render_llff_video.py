@@ -85,7 +85,7 @@ def render_video(trainer):
     # cur_near_far[0] = near
     # cur_near_far[1] = far
     
-    cur_path = get_spiral_render_path(cur_c2ws_all, cur_near_far, rads_scale=1.5, N_views=240)
+    cur_path = get_spiral_render_path(cur_c2ws_all, cur_near_far, rads_scale=1.5, N_views=trainer.config.ckpt.num_frames)
     # cur_path = interpolate_camera_path(cur_c2ws_all, 240)
     # cur_path = bezier_camera_path(cur_c2ws_all, 240)
     # convert back to extrinsics tensor
@@ -128,6 +128,7 @@ def render_video(trainer):
     # save_dir = trainer.config.model.model_path
     # os.makedirs(save_dir,exist_ok=True)
     save_path = os.path.join(trainer.config.model.model_path,f'{scene_name}.mp4')
+    # print(f"save_path: {save_path}")
     imageio.mimwrite(save_path, np.stack(imgs), fps=60, quality=5)
     print(f'The video is saved in {save_path}.')
 

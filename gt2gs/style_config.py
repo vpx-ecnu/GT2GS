@@ -58,6 +58,7 @@ class ApplicationConfig(Serializable):
     
 @dataclass
 class CheckpointConfig(Serializable):
+    num_frames: int = 240
     load_iterations: int = -1
     save_iterations: list[int] = list_field()
     checkpoint_iterations: list[int] = list_field()
@@ -145,7 +146,7 @@ class ConfigManager(Serializable):
         self.style.stylized_model_path = os.path.join("output", current_date)
     
     def _check_params(self):
-        assert os.path.exists(self.style.style_image), f"{self.style.style_image} does not exists."
+        # assert os.path.exists(self.style.style_image), f"{self.style.style_image} does not exists."
         
         
         assert self.style.theta >= 0 and self.style.theta <= 359, "theta mush between 0 and 359"

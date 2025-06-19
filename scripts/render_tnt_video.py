@@ -171,11 +171,9 @@ def interpolate_camera_path(c2ws_all, num_frames=60):
     return render_poses
 
 def render_set(model_path, name, iteration, views, gaussians, pipeline, background):
-    render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
-    gts_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt")
+    render_path = os.path.join(model_path, name)
 
     makedirs(render_path, exist_ok=True)
-    makedirs(gts_path, exist_ok=True)
 
     for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
         rendering = render(view, gaussians, pipeline, background)["render"]
@@ -259,9 +257,7 @@ def render_video(trainer):
     
 
     # generate video
-    folder = f'{trainer.config.model.model_path}/video/'
-    saved_iters = [int(fname.split("_")[-1]) for fname in os.listdir(folder)]
-    path = os.path.join(folder, f'ours_{trainer.scene.loaded_iter}/renders')
+    path = f'{trainer.config.model.model_path}/video/'
     scene_name = os.path.basename(trainer.config.model.model_path)
     filelist = os.listdir(path)
     filelist = sorted(filelist)

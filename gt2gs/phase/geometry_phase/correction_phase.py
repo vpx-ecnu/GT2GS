@@ -21,6 +21,8 @@ class CorrectionPhase(GeometryPhase):
         
         self.stylized_features = self.swap_features(self.trainer.gaussians._original_features_dc)
         
+        # render_viewpoint(self.trainer, "./debug/start_correction")
+        # exit(0)
         # self.stylized_features = self.trainer.gaussians._features_dc.clone().detach()
         
         # new_features_dc = self.trainer.gaussians._original_features_dc
