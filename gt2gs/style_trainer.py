@@ -23,7 +23,7 @@ class StyleTrainer:
     def __init__(self, config: ConfigManager):
         self.config = config
         self.device = config.model.data_device
-        
+        self.meta_information = []
         self._init_components()
         
     def train(self):
@@ -40,6 +40,11 @@ class StyleTrainer:
             
         for observer in self.observers:
             observer.on_training_end()
+            
+        # for (name, time) in self.meta_information:
+            
+        #     name_width = 15
+        #     print(f"Phase Name: {name:<{name_width}}, Phase Time: {time:.2f}ms")
     
         
     def _train_iteration(self):
@@ -55,6 +60,9 @@ class StyleTrainer:
         self.gaussians.update_learning_rate(self.iteration)
         self.config.set_debug(True if self.iteration - 1 == self.config.app.debug_from else False)
         losses, timing = phase.on_iteration(self.iteration)
+        # losses = {}
+        # timing = 1
+        phase.time += timing
         
         metrics = TrainingMetrics(
             iteration=self.iteration,
@@ -71,14 +79,17 @@ class StyleTrainer:
         
         if self.cur_phase != -1:
             self.phases[self.cur_phase].on_phase_end()
+            self.meta_information.append((self.phases[self.cur_phase].name, 
+                                          self.phases[self.cur_phase].time))
             self.phases[self.cur_phase] = None
             # del self.phases[self.cur_phase]
         
+        last_phase = self.cur_phase
         self.cur_phase = new_phase
         self.phases[self.cur_phase].on_phase_start()
         
         for observer in self.observers:
-            observer.on_phase_changed(self.cur_phase, new_phase)        
+            observer.on_phase_changed(last_phase, new_phase)        
 
         
     def _init_components(self):
@@ -147,8 +158,8 @@ class StyleTrainer:
     def _init_observers(self):
         
         self.observers: List[TrainingObserver] = [
+            CheckpointSaver(self),
             ProgressTracker(self),
-            CheckpointSaver(self)
         ]
         
         

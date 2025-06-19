@@ -4,6 +4,7 @@ import torch
 from gs.gaussian_renderer import render
 from gt2gs.style_utils import *
 import os
+import time
 from icecream import ic
 import torchvision
 import numpy as np
@@ -153,6 +154,8 @@ def preprocess(trainer):
     #     render_depth_or_mask_images(f"./debug/depth_mask/{i}.jpg", depth_mask)
     # exit(0)
     
+    start_time_GTA = time.perf_counter()
+    
     downscaled_style_images_list = _init_style_downscaling(trainer, trainer.ctx.style_image)
     # for i, image in enumerate(downscaled_style_images_list):
     #     # ic(image.shape)
@@ -162,6 +165,9 @@ def preprocess(trainer):
     
     trainer.feature_extractor = FeatureExtractor()
     style_features_list, style_matrix_list = _init_style_features(trainer, downscaled_style_images_list)
+    end_time_GTA = time.perf_counter()
+    elapsed_time_GTA = end_time_GTA - start_time_GTA
+    print(f"Time for GTA: {elapsed_time_GTA:.4f} seconds")
     
     # for i, style_features in enumerate(style_features_list):
     #     ic(style_features.shape)

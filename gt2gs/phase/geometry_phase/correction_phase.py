@@ -18,7 +18,7 @@ class CorrectionPhase(GeometryPhase):
     
     @torch.no_grad
     def on_phase_start(self):
-        
+    
         self.stylized_features = self.swap_features(self.trainer.gaussians._original_features_dc)
         
         # render_viewpoint(self.trainer, "./debug/start_correction")

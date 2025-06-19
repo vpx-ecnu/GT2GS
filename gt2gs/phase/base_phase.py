@@ -15,6 +15,7 @@ class TrainingPhase(ABC):
         self.name = name
         self.uid = uid
         self.enable_densify = enable_densify
+        self.time = 0
         
     def update(self, iteration, loss):
         
