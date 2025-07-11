@@ -13,6 +13,7 @@ from scene.cameras import Camera
 import numpy as np
 from utils.general_utils import PILtoTorch
 from utils.graphics_utils import fov2focal
+from utils.graphics_utils import getWorld2View2
 
 WARNED = False
 
@@ -350,3 +351,31 @@ def sort_cameras_by_angle(cameras):
     # sorted_cameras = cameras[:half] + cameras[half:][::-1]
 
     return cameras
+
+
+def camInfo2c2w(camInfos):    
+    c2ws = []
+    for cam in camInfos:
+        w2c = getWorld2View2(cam.R, cam.T.squeeze())
+        c2w = np.linalg.inv(w2c)
+        c2ws.append(c2w)
+    c2ws = np.stack(c2ws)
+    return c2ws
+    
+def c2w2camInfo(c2ws, base_info):
+    cam_infos = []
+    for idx, c2w in enumerate(c2ws):
+        w2c = np.linalg.inv(c2w)
+        
+        cam_infos.append(Camera(
+            colmap_id=idx,
+            R=w2c[:3, :3].T,
+            T=w2c[:3, 3],
+            FoVx=base_info.FoVx,
+            FoVy=base_info.FoVy,
+            image=base_info.original_image,
+            gt_alpha_mask=None,
+            image_name=f"image_{idx}.png",
+            uid=idx
+        ))
+    return cam_infos

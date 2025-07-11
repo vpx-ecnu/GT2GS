@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.spatial.transform import Rotation
+from icecream import ic
 
 def get_interpolate_render_path(c2ws, N_views=30):
     N = len(c2ws)
@@ -115,10 +116,14 @@ def get_spiral_render_path(c2ws_all, near_far, rads_scale=0.5, N_views=120):
     return np.stack(render_poses)
 
 def poses_avg(poses):
+    # poses [images, 3, 4] not [images, 3, 5]
+    # hwf = poses[0, :3, -1:]
+
     center = poses[:, :3, 3].mean(0)
     vec2 = normalize(poses[:, :3, 2].sum(0))
+    # ic(vec2)
     up = poses[:, :3, 1].sum(0)
-    c2w = viewmatrix(vec2, up, center)
+    c2w = np.concatenate([viewmatrix(vec2, up, center)], 1)
 
     return c2w
 
@@ -137,13 +142,20 @@ def viewmatrix(z, up, pos):
     return m
 
 
-def render_path_spiral(c2w, up, rads, focal, zdelta, zrate, N_rots=2, N=120):
+def render_path_spiral(c2w, up, rads, focal, zrate, rots, N):
     render_poses = []
-    rads = np.array(list(rads) + [1.])
+    rads = np.array(list(rads) + [1.0])
+    # hwf = c2w[:,4:5]
 
-    for theta in np.linspace(0., 2. * np.pi * N_rots, N+1)[:-1]:
-        c = np.dot(c2w[:3, :4], np.array([np.cos(theta), -np.sin(theta), -np.sin(theta*zrate), 1.]) * rads)
-        z = normalize(c - np.dot(c2w[:3, :4], np.array([0, 0, -focal, 1.])))
+    for theta in np.linspace(0.0, 2.0 * np.pi * rots, N + 1)[:-1]:
+        c = np.dot(
+            c2w[:3, :4],
+            np.array([np.cos(theta), -np.sin(theta), -np.sin(theta * zrate), 1.0])
+            * rads,
+        )
+        z = normalize(c - np.dot(c2w[:3, :4], np.array([0, 0, -focal, 1.0])))
+        # render_poses.append(np.concatenate([viewmatrix(z, up, c), hwf], 1))
         render_poses.append(viewmatrix(z, up, c))
+    render_poses = np.stack(render_poses)
     return render_poses
 # --------------------- End: Render scriptes for LLFF dataset video generation --------------------

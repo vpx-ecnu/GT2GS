@@ -56,9 +56,20 @@ class ApplicationConfig(Serializable):
     quiet: bool = False
     need_log: bool = False
     
+    
+@dataclass
+class VideoConfig(Serializable):
+    # For LLFF spiral Video
+    num_rotations: int = 2
+    
+    # For Rendering Video
+    enable_save_frames: bool = False
+    save_frames_path: str = "video"
+    num_frames: int = 120
+
 @dataclass
 class CheckpointConfig(Serializable):
-    num_frames: int = 240
+    
     load_iterations: int = -1
     save_iterations: list[int] = list_field()
     checkpoint_iterations: list[int] = list_field()
@@ -121,6 +132,7 @@ class ConfigManager(Serializable):
     app: ApplicationConfig
     style: StyleConfig
     ckpt: CheckpointConfig
+    video: VideoConfig
     
     def __init__(self, raw_config):
         self.model = raw_config.model
@@ -129,6 +141,7 @@ class ConfigManager(Serializable):
         self.app = raw_config.app
         self.style = raw_config.style
         self.ckpt = raw_config.ckpt
+        self.video = raw_config.video
         
         self._generate_output_path()
         self._check_params()
@@ -181,6 +194,7 @@ def parse_args():
     parser.add_arguments(ApplicationConfig, dest="app")
     parser.add_arguments(CheckpointConfig, dest="ckpt")
     parser.add_arguments(StyleConfig, dest="style")
+    parser.add_arguments(VideoConfig,dest="video" )
     
     config = parser.parse_args()
     
