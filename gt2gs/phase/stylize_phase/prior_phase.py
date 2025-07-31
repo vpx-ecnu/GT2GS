@@ -32,6 +32,7 @@ class PriorPhase(StylizePhase):
             
             self.render_feat = self.feature_extractor(render_image)
             curr_scene_features_mask = self.trainer.ctx.scene_features_mask_list[curr_cam.uid]
+            curr_fusion_mask = self.trainer.ctx.fusion_masks[curr_cam.uid]
             depth_group_num = self.trainer.config.style.depth_group_num
             render_features_list = get_separated_list(self.render_feat, 
                                                       curr_scene_features_mask,
@@ -41,7 +42,9 @@ class PriorPhase(StylizePhase):
             render_depth = self.render_pkg["depth"]
             curr_depth = self.trainer.ctx.depth_images[curr_cam.uid]
             depth_loss = torch.mean((render_depth - curr_depth) ** 2)
-            
+            fc, fh, fw = self.render_feat.shape
+            diff_matrix = torch.zeros((1, fh, fw), device=self.render_feat.device)
+
             if last_cam is None:
                 # TODO：一个更好的先验控制模块
                 # input: 给定reference图的特征图 or mask+对应区域特征图角度控制
@@ -189,21 +192,32 @@ class PriorPhase(StylizePhase):
                         render_feat = render_features_list[i]
                         
                         # ic(style_feat.shape, style_matrix.shape, render_feat.shape, (curr_scene_features_mask == i).sum())
-                        curr_target_feat, curr_target_matrix = prior_feat_replace(render_feat, 
+
+                        # TODO: calculate nnfm target_matrix to get distort level
+                        curr_target_feat, curr_target_matrix, diff = prior_feat_replace(render_feat, 
                                                                                   style_feat, 
                                                                                   style_matrix,
                                                                                   p_mask,
                                                                                   p_feat, 
-                                                                                  p_matrix)
+                                                                                  p_matrix,
+                                                                                  flag=self.config.style.enable_weighted)
                         target_feat[:, mask] = curr_target_feat
                         target_matrix[:, mask] = curr_target_matrix
+                        if self.config.style.enable_weighted:
+                            diff_matrix[:, mask] = diff
                         
                 
             self._update_target(curr_cam.uid, target_feat, target_matrix)
             
-            prior_loss = cos_distance(target_feat, self.render_feat)
+            # TODO: weighted
+            
+            weighted_matrix = (90.0 - diff_matrix) / 90.0
+            if self.config.style.enable_weighted:
+                weighted_matrix = self.trainer.config.style.lambda_adaptive * (curr_fusion_mask.unsqueeze(0) + weighted_matrix * 0.25)
+            # weighted_matrix = weighted_matrix * curr_fusion_mask.unsqueeze(0)
+            prior_loss = cos_distance(target_feat, self.render_feat, weighted_matrix)
             content_loss = content_loss_fn(render_features_list, 
-                                           self.trainer.ctx.scene_features_list[curr_cam.uid])
+                                           self.trainer.ctx.scene_features_list[curr_cam.uid], weighted_matrix)
             
             # content_loss = torch.mean((self.render_feat - self.original_feats[curr_cam.uid]) ** 2) 
             
@@ -211,7 +225,7 @@ class PriorPhase(StylizePhase):
             shape_loss = (top2_values[:, 0] / top2_values[:, 1]).mean()
             imgtv_loss = get_imgtv_loss(render_image)
             
-            # concat_and_save_images("./image.jpg", curr_image, render_image, curr_depth, render_depth)
+            concat_and_save_images("./image.jpg", render_image, render_depth)
             # if not self.trainer.config.style.densify:
             # ic(loss_delta_opacity, loss_delta_scaling)
             # exit(0)

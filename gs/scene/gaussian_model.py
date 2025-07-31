@@ -24,6 +24,7 @@ from utils.general_utils import strip_symmetric, build_scaling_rotation
 
 from gaussian_renderer import camera2rasterizer
 
+# TODO: add new 
 class GaussianModel:
 
     def setup_functions(self):
@@ -131,6 +132,12 @@ class GaussianModel:
     
     @property
     def get_features(self):
+        features_dc = self._features_dc
+        features_rest = self._features_rest
+        return torch.cat((features_dc, features_rest), dim=1)
+    
+    @property
+    def get_features_gt(self):
         features_dc = self._features_dc
         features_rest = self._features_rest
         return torch.cat((features_dc, features_rest), dim=1)

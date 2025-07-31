@@ -37,6 +37,7 @@ def camera2rasterizer(viewpoint_camera, bg_color: torch.Tensor, sh_degree: int =
 
     return rasterizer
 
+# TODO: add rendered gt image
 def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, override_color = None):
     """
     Render the scene. 
@@ -99,9 +100,11 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
             sh2rgb = eval_sh(pc.active_sh_degree, shs_view, dir_pp_normalized)
             colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
         else:
+            # always
             shs = pc.get_features
     else:
         colors_precomp = override_color
+    
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen). 
     rendered_image, radii, depth = rasterizer(
@@ -113,10 +116,23 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
         scales = scales,
         rotations = rotations,
         cov3D_precomp = cov3D_precomp)
+    
+    # TODO: add shs_gt = pc.get_features_gt
+    # shs_gt = None
+    # rendered_gt_image, _, _ = rasterizer(
+    #     means3D = means3D,
+    #     means2D = means2D,
+    #     shs = shs_gt,
+    #     colors_precomp = colors_precomp,
+    #     opacities = opacity,
+    #     scales = scales,
+    #     rotations = rotations,
+    #     cov3D_precomp = cov3D_precomp)
 
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
     # They will be excluded from value updates used in the splitting criteria.
     return {"render": rendered_image,
+            # "render_gt": rendered_gt_image,
             "viewspace_points": screenspace_points,
             "visibility_filter" : radii > 0,
             "radii": radii, 

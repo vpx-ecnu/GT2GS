@@ -8,6 +8,8 @@ from gs.utils.loss_utils import l1_loss
 from gs.utils.loss_utils import ssim
 import wandb
 
+from gt2gs.style_utils import *
+
 class CorrectionPhase(GeometryPhase):
     
     def swap_features(self, new_features):
@@ -52,6 +54,7 @@ class CorrectionPhase(GeometryPhase):
             
             self.render_pkg = self.trainer.get_render_pkgs(viewpoint_cam)
             render_image = self.render_pkg["render"]
+            render_depth = self.render_pkg["depth"]
             original_image = viewpoint_cam.original_image
             
             Ll1 = l1_loss(render_image, original_image)
@@ -63,6 +66,8 @@ class CorrectionPhase(GeometryPhase):
             )
             self.update(iteration, loss)
             
+            concat_and_save_images("./image.jpg", render_image, render_depth)
+
             if self.trainer.config.app.need_log:
                 wandb.log({
                     "Loss": loss.item(),

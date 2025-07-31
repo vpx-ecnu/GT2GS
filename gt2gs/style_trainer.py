@@ -18,6 +18,8 @@ from gt2gs.phase.stylize_phase.prior_phase import PriorPhase
 from gt2gs.phase.other_phase.lock_parameter_phase import LockParameterPhase
 from icecream import ic
 
+from gt2gs.style_utils import *
+
 class StyleTrainer:
     
     def __init__(self, config: ConfigManager):
@@ -133,7 +135,8 @@ class StyleTrainer:
         
         
         _add_phase(PreProcessPhase, "Pre Process", self.config.style.preprocess_iter, self.config.style.pre_densify)
-            
+
+        # TODO: only Prior   
         for i in range(self.config.style.rounds):
             enable_densify = self.config.style.enable_stylize_densify and (i < self.config.style.rounds // 2)
             # ic(enable_densify)
@@ -144,8 +147,12 @@ class StyleTrainer:
             if self.config.style.enable_geometry_correction:
                 _add_phase(CorrectionPhase, f"Correction {i}", self.config.style.correction_iter, False)
             
-            if self.config.style.enable_nnfm_correction:
+            if self.config.style.enable_weighted:
+                # if i > self.config.style.rounds // 2:
                 _add_phase(NNFMPhase,  f"NNFM {i}", self.config.style.style_iter, enable_densify)
+
+                # _add_phase(PriorPhase,  f"Prior_ {i}", self.config.style.style_iter, enable_densify)
+                # _add_phase(NNFMPhase,  f"NNFM {i}", self.config.style.style_iter, enable_densify)
                 if self.config.style.enable_geometry_correction:
                     _add_phase(CorrectionPhase, f"Correction {i}", self.config.style.correction_iter, False)
                 

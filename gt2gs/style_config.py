@@ -95,6 +95,7 @@ class StyleConfig(Serializable):
     lambda_delta_opacity: float = 0
     lambda_delta_scaling: float = 0
     lambda_delta_position: float = 1
+    lambda_adaptive: float = 0.8
     
     enable_stylize_densify: bool = False
     pre_densify: bool = False
@@ -103,6 +104,7 @@ class StyleConfig(Serializable):
     enable_color_transfer: bool = False
     enable_feature_enhancement: bool = False
     enable_prior: bool = False
+    enable_weighted: bool = False
     
     preprocess_iter: int = 400
     postpreprocess_iter: int = 400

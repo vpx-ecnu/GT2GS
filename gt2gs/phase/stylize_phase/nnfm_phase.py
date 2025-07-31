@@ -27,6 +27,7 @@ class NNFMPhase(StylizePhase):
             fc, fh, fw = self.render_feat.shape
             target_feat = torch.zeros((fc, fh, fw), device=self.render_feat.device)
             target_matrix = torch.zeros((1, fh, fw), device=self.render_feat.device)
+            weighted_matrix = torch.ones((1, fh, fw), device=self.render_feat.device)
             
             for i in range(depth_group_num):
                 mask = (curr_scene_features_mask == i)
@@ -51,14 +52,15 @@ class NNFMPhase(StylizePhase):
             curr_depth = self.trainer.ctx.depth_images[viewpoint_cam.uid]
             depth_loss = torch.mean((render_depth - curr_depth) ** 2)
             
-            nnfm_loss = cos_distance(target_feat, self.render_feat)
+            nnfm_loss = cos_distance(target_feat, self.render_feat, weighted_matrix)
             content_loss = content_loss_fn(render_features_list, 
-                                           self.trainer.ctx.scene_features_list[viewpoint_cam.uid])
+                                           self.trainer.ctx.scene_features_list[viewpoint_cam.uid],weighted_matrix)
             
             top2_values, _ = torch.topk(self.trainer.gaussians.get_scaling, k=2, dim=1) 
             shape_loss = (top2_values[:, 0] / top2_values[:, 1]).mean()
             imgtv_loss = get_imgtv_loss(render_image)
             
+            concat_and_save_images("./image.jpg", render_image, render_depth)
             
             loss = (
                 # Todo: check consistent_loss

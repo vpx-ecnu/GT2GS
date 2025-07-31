@@ -71,12 +71,12 @@ class CUDATimer:
     def elapsed_ms(self) -> float:
         return self.start_event.elapsed_time(self.end_event)
 
-def cos_distance(a, b):
+def cos_distance(a, b, weighted_matrix):
     a_norm = (a * a).sum(1, keepdims=True).sqrt()
     b_norm = (b * b).sum(1, keepdims=True).sqrt()
     a_tmp = a / (a_norm + 1e-8)
     b_tmp = b / (b_norm + 1e-8)
-    cossim = (a_tmp * b_tmp).sum(1)
+    cossim = (a_tmp * b_tmp * weighted_matrix).sum(1)
     cos_d = 1.0 - cossim
     return cos_d.mean()
 

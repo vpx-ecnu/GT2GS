@@ -42,9 +42,10 @@ def main():
     #     from scripts.render_tnt_video import render_video
     # else:
     #     from scripts.render_llff_video import render_video
+    # from scripts.render_llff_video import render_video
     # render_video(trainer)
     
-    # render_viewpoint(trainer)
+    render_viewpoint(trainer)
 
 
 if __name__ == "__main__":

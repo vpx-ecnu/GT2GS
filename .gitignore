@@ -20,3 +20,4 @@ image_llff.jpg
 test/
 experiment
 CameraViewer/
+*.sh

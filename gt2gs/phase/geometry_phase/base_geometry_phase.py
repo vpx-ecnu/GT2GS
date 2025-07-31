@@ -3,6 +3,7 @@ from typing import Dict
 from gs.utils.loss_utils import l1_loss
 from gs.utils.loss_utils import ssim
 from gt2gs.phase.base_phase import TrainingPhase
+from gt2gs.style_utils import *
 from random import randint
 
 class GeometryPhase(TrainingPhase):
@@ -25,6 +26,8 @@ class GeometryPhase(TrainingPhase):
                 self.trainer.config.opt.lambda_dssim * (1.0 - ssim_val)
             )
             self.update(iteration, loss)
+
+            concat_and_save_images("./image_post.jpg", render_image, original_image)
               
         return {
             "Points": f"{self.trainer.gaussians._opacity.shape[0]}",

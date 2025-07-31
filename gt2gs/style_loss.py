@@ -161,7 +161,7 @@ def prior_argmin_cos_distance(a, b, Mat, p_mask, p_feats, p_Mat):
 
     return torch.cat(z_best, dim=0)
 
-def prior_feat_replace(A, B, Mat, p_mask, p_feats, p_Mat):
+def prior_feat_replace(A, B, Mat, p_mask, p_feats, p_Mat, flag=True):
     # c, h, w = A.shape
     # A_flat = A.reshape(c, -1)
     # B_flat = B.reshape(c, -1)
@@ -175,14 +175,35 @@ def prior_feat_replace(A, B, Mat, p_mask, p_feats, p_Mat):
     indices = prior_argmin_cos_distance(A, B, Mat, p_mask, p_feats, p_Mat)
     C_flat = B[:, indices]
     C_matrix = Mat[:, indices] * (1 - p_mask) + p_Mat * p_mask
+
+    # print(A.shape)
+    # print(C_flat.shape)
+    # print(C_matrix.shape)
+
+
+    if flag:
+        indices_nnfm = nnfm_argmin_cos_distance(A, B)
+        C_matrix_nnfm = Mat[:, indices_nnfm]
+        diff = torch.abs(C_matrix - C_matrix_nnfm) % 180.0
+        diff = 90.0 - torch.minimum(diff, 180.0 - diff)
+    else:
+        diff = torch.zeros_like(C_matrix)
+    # min_val = diff_matrix.min()
+    # print(min_val)
+
+    # print(diff_matrix)
+    # exit(0)
+
     
-    return C_flat, C_matrix
+    return C_flat, C_matrix, diff
     
     
-def content_loss_fn(render_feats_list, scene_feats_list):
+def content_loss_fn(render_feats_list, scene_feats_list, x):
     content_loss = 0
     coefficient = 1
+    x_flat = x.view(1, -1)
     for (render_feat, scene_feat) in zip(render_feats_list, scene_feats_list):
+        # TODO: weighted
         content_loss += coefficient * torch.mean((render_feat - scene_feat) ** 2)
-        coefficient /= 5
+        coefficient /= 1.5
     return content_loss

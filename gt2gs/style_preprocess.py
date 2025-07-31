@@ -16,6 +16,49 @@ from gs.scene.gaussian_model import GaussianModel
 from gt2gs.style_utils import render_depth_or_mask_images
 from gt2gs.style_loss import FeatureExtractor
 import math
+from scipy.fftpack import dct
+
+def compute_frequency_density_from_chw_tensor(image_tensor: torch.Tensor) -> torch.Tensor:
+    """
+    输入:
+        image_tensor: torch.Tensor, 形状为 (C, H, W)，像素已归一化在 [0, 1]
+    输出:
+        torch.Tensor, 形状为 (H//8, W//8)，归一化后的频率密度图
+    """
+    assert isinstance(image_tensor, torch.Tensor)
+    assert image_tensor.ndim == 3, "图像必须是 [C, H, W] 形式"
+    C, H, W = image_tensor.shape
+    assert H % 8 == 0 and W % 8 == 0, "图像尺寸必须是8的倍数"
+
+    # 转灰度（若已有灰度图则跳过）
+    if C == 3:
+        r, g, b = image_tensor[0], image_tensor[1], image_tensor[2]
+        gray = 0.299 * r + 0.587 * g + 0.114 * b
+    elif C == 1:
+        gray = image_tensor[0]
+    else:
+        raise ValueError("仅支持输入通道为 1 或 3 的图像")
+
+    # 转 numpy 并恢复像素范围
+    gray_np = gray.detach().cpu().numpy().astype(np.float32) * 255.0
+    gray_np -= 128.0  # DCT 预处理：中心化
+
+    # 分块：转为形状 (H//8, 8, W//8, 8) → (h_blocks, w_blocks, 8, 8)
+    blocks = gray_np.reshape(H // 8, 8, W // 8, 8).transpose(0, 2, 1, 3)
+
+    # 计算 DCT
+    dct_blocks = dct(dct(blocks, axis=-2, norm='ortho'), axis=-1, norm='ortho')
+
+    # 提取高频区域（右下 4×4）并计算能量
+    high_freq = dct_blocks[:, :, 4:, 4:]
+    energy_map = np.sum(np.abs(high_freq), axis=(-2, -1))  # shape = (H//8, W//8)
+
+    # 归一化为 [0, 1]
+    norm_map = (energy_map - energy_map.min()) / (energy_map.ptp() + 1e-8)
+    fre_map = torch.tensor(norm_map, dtype=torch.float32)
+    # fre_map = 1.0 - fre_map
+
+    return fre_map
 
 def _init_depth_images(trainer):
     
@@ -26,6 +69,21 @@ def _init_depth_images(trainer):
         trainer.ctx.depth_images.append(depth_image.squeeze().detach())
         
     trainer.ctx.depth_images = torch.stack(trainer.ctx.depth_images).to(device=trainer.device)
+
+def _init_frequency_images(trainer):
+    viewpoint_stack = trainer.scene.getTrainCameras()
+    trainer.ctx.frequency_images = []
+    for _, view in enumerate(viewpoint_stack):
+        image = view.original_image
+        _, H, W = image.shape
+        H_crop = (H // 8) * 8  #
+        W_crop = (W // 8) * 8  #
+        frequency_images = compute_frequency_density_from_chw_tensor(image[:,:H_crop, :W_crop])
+        trainer.ctx.frequency_images.append(frequency_images.squeeze().detach())
+        concat_and_save_images("./fre_image.jpg", frequency_images.squeeze().detach())
+    trainer.ctx.frequency_images = torch.stack(trainer.ctx.frequency_images).to(device=trainer.device)
+
+
         
 def _init_scene_images(trainer):
     
@@ -53,6 +111,7 @@ def _init_style_images(trainer):
         trainer.config.style.style_image_size,
     ).to(device=trainer.device).contiguous()
 
+# TODO: frequency
 def _init_depth_group(trainer, depth_images):
     
     depth_group_num = trainer.config.style.depth_group_num
@@ -83,8 +142,43 @@ def _init_depth_group(trainer, depth_images):
     # exit(0)
     # for i, k in enumerate(depth_masks):
     #     ic(i, k.shape)
-        
+    
     return depth_masks
+
+# def _init_frequency_group(trainer, frequency_images):
+    
+#     # TODO: add trainer.config.style.frequency_group_num
+#     frequency_group_num = trainer.config.style.frequency_group_num
+#     # TODO: find the max frequency (not 256)
+#     frequency_group_interval = 1.0 / frequency_group_num
+    
+#     # ic(depth_group_num, depth_group_interval)
+    
+#     frequency_masks = torch.zeros_like(frequency_images, device=trainer.device)
+    
+#     for i, frequency_image in enumerate(frequency_images):
+#         normalized_depth_image = normalize_depth_to_uint8(depth_image)
+        
+#         for j in range(depth_group_num):
+#             # [l_point, r_point]
+#             l_point = depth_group_interval * j
+#             r_point = min(255, depth_group_interval * (j + 1) - 1)
+            
+#             mask = torch.logical_and(normalized_depth_image >= l_point, 
+#                                      normalized_depth_image <= r_point)
+            
+#             depth_masks[i][mask] = j
+#         # ic(scale_value[i])
+#         # for j in range(len(scale_value[i]) - 1, -1, -1):
+#         #     # ic(scale_value[i][j], scale_value[i][0])
+#         #     scale_value[i][j] /= scale_value[i][0]
+#             # ic(scale_value[i][j])
+#         # exit(0)
+#     # exit(0)
+#     # for i, k in enumerate(depth_masks):
+#     #     ic(i, k.shape)
+        
+#     return depth_masks
 
 def _init_style_downscaling(trainer, style_image):
     
@@ -125,6 +219,7 @@ def _init_style_features(trainer, style_image_list):
         
     return style_features_list, style_matrix_list
 
+# TODO: new mask list
 def _init_scene_features(trainer, scene_images, masks):
     depth_group_num = trainer.config.style.depth_group_num
 
@@ -146,8 +241,13 @@ def preprocess(trainer):
     _init_scene_images(trainer)
     _init_depth_images(trainer)
     _init_style_images(trainer)
+    _init_frequency_images(trainer)
     
+    # TODO: (done?) add frequency group
     depth_masks = _init_depth_group(trainer, trainer.ctx.depth_images)
+    # frequency_masks = _init_frequency_group(trainer, trainer.ctx.scene_images)
+
+
     # for i, v in enumerate(scale_value):
     #     ic(v)
     # for i, depth_mask in enumerate(depth_masks):
@@ -172,11 +272,13 @@ def preprocess(trainer):
     # for i, style_features in enumerate(style_features_list):
     #     ic(style_features.shape)
     
+    # TODO: depth mask from here, will add frequency mask
     scene_features_list, scene_features_mask_list = _init_scene_features(trainer, trainer.ctx.scene_images, depth_masks)
     # for i, features_list in enumerate(scene_features_list):
     #     for j, features in enumerate(features_list):
     #         ic(i, j, features.shape)
     
+
     trainer.warper = Warper()
     trainer.ctx.style_features_list = style_features_list
     trainer.ctx.style_matrix_list = style_matrix_list
@@ -184,6 +286,17 @@ def preprocess(trainer):
     trainer.ctx.scene_masks = depth_masks
     trainer.ctx.scene_features_list = scene_features_list
     trainer.ctx.scene_features_mask_list = scene_features_mask_list
+
+    trainer.ctx.fusion_masks = []
+    for i, fre_image in enumerate(trainer.ctx.frequency_images):
+        fusion = 2.0 - fre_image - scene_features_mask_list[i] / (trainer.config.style.depth_group_num - 1)
+        trainer.ctx.fusion_masks.append(fusion.detach())
+    
+    a = 1
+
+
+
+    # TODO: add fusion mask
     
     
     # _init_add_gaussians(trainer)
