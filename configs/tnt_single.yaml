@@ -39,4 +39,7 @@ style:
   style_iter: 400
   correction_iter: 1000
   enable_geometry_correction: true
+  enable_weighted: true
+  enable_prior: true
+  theta: 0
   
