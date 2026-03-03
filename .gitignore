@@ -18,6 +18,7 @@ image_llff.jpg
 *.jpg
 *.png
 test/
+ckpt
 experiment
 experiments
 CameraViewer/
