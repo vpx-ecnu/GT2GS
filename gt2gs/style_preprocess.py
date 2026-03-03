@@ -54,7 +54,7 @@ def compute_frequency_density_from_chw_tensor(image_tensor: torch.Tensor) -> tor
     energy_map = np.sum(np.abs(high_freq), axis=(-2, -1))  # shape = (H//8, W//8)
 
     # 归一化为 [0, 1]
-    norm_map = (energy_map - energy_map.min()) / (energy_map.ptp() + 1e-8)
+    norm_map = (energy_map - energy_map.min()) / (np.ptp(energy_map) + 1e-8)
     fre_map = torch.tensor(norm_map, dtype=torch.float32)
     # fre_map = 1.0 - fre_map
 

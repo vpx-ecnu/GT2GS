@@ -66,7 +66,7 @@ class CorrectionPhase(GeometryPhase):
             )
             self.update(iteration, loss)
             
-            concat_and_save_images("./image.jpg", render_image, render_depth)
+            # concat_and_save_images("./image.jpg", render_image, render_depth)
 
             if self.trainer.config.app.need_log:
                 wandb.log({

@@ -60,7 +60,7 @@ class NNFMPhase(StylizePhase):
             shape_loss = (top2_values[:, 0] / top2_values[:, 1]).mean()
             imgtv_loss = get_imgtv_loss(render_image)
             
-            concat_and_save_images("./image.jpg", render_image, render_depth)
+            # concat_and_save_images("./image.jpg", render_image, render_depth)
             
             loss = (
                 # Todo: check consistent_loss

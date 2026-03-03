@@ -37,7 +37,7 @@ class StyleTrainer:
         self._init_observers()
         
         for self.iteration in range(1, self.total_iterations + 1):
-            self._handle_gui()
+            # self._handle_gui()
             self._train_iteration()
             
         for observer in self.observers:
@@ -104,10 +104,20 @@ class StyleTrainer:
         self.first_iter = 1
         if self.config.ckpt.start_checkpoint is not None:
             self._load_checkpoint()
-            
+
         self.gaussians.training_setup(self.config.opt)
         self.gaussians._features_rest = torch.zeros_like(self.gaussians._features_rest, device=self.device).requires_grad_(False)
         
+        if self.config.model.drop_rate > 0:
+            pre_n = self.gaussians._xyz.shape[0]
+            print(f"Before Prune {pre_n} points")
+            ind = torch.randperm(pre_n, device="cuda")[:int(pre_n * self.config.model.drop_rate)]
+            mask = torch.zeros(pre_n, dtype=torch.bool, device="cuda")
+            mask[ind] = True
+            self.gaussians.prune_points(mask)
+            print(f"Prune {len(ind)} points, remain {self.gaussians._opacity.shape[0]} points")
+
+            
         
         
     def _init_phases(self):

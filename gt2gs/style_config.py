@@ -16,6 +16,9 @@ class ModelConfig(Serializable):
     white_background: bool = False
     data_device: str = "cuda"
     eval: bool = False
+
+    view_num: int = -1
+    drop_rate: float = 0
     
 @dataclass
 class PipelineConfig(Serializable):

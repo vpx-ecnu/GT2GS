@@ -27,7 +27,7 @@ class GeometryPhase(TrainingPhase):
             )
             self.update(iteration, loss)
 
-            concat_and_save_images("./image_post.jpg", render_image, original_image)
+            # concat_and_save_images("./image_post.jpg", render_image, original_image)
               
         return {
             "Points": f"{self.trainer.gaussians._opacity.shape[0]}",
