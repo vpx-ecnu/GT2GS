@@ -55,6 +55,18 @@ def loadCam(args, id, cam_info, resolution_scale):
 def cameraList_from_camInfos(cam_infos, resolution_scale, args):
     camera_list = []
 
+    n = len(cam_infos)
+    if args.view_num > 0 and args.view_num <= n:
+        indices = np.linspace(0, n - 1, args.view_num, dtype=int)
+        indices = sorted(set(indices))
+        while len(indices) < args.view_num:
+            if indices[-1] != n - 1:
+                indices.append(n - 1)
+            indices = sorted(set(indices))
+        cam_infos = [cam_infos[i] for i in indices]
+
+        print(f"Reduced training views to {len(cam_infos)} views: {indices}.")
+
     for id, c in enumerate(cam_infos):
         camera_list.append(loadCam(args, id, c, resolution_scale))
 
