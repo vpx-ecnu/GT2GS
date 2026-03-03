@@ -42,4 +42,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
     downsample_and_rotate(args.image_path, args.save_path)
     
-# /home/lwj/data/ARF-svox2/data/styles/145.jpg

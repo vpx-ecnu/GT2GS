@@ -5,16 +5,6 @@ from icecream import ic
 
 class PreProcessPhase(GeometryPhase):
     
-
-    # @torch.no_grad
-    # def on_phase_start(self):
-    #     pass
-        # if self.config.style.enable_color_transfer:
-        #     color_transfer(self.trainer.ctx)
-            
-    # @torch.no_grad
-    # def on_phase_end(self):
-    #     self.trainer.gaussians._original_features_dc = self.trainer.gaussians._features_dc.clone().detach()
     @torch.no_grad
     def on_phase_start(self):
         self.trainer.gaussians._original_features_dc = self.trainer.gaussians._features_dc.clone().detach()

@@ -38,7 +38,6 @@ class NNFMPhase(StylizePhase):
                 style_matrix = self.trainer.ctx.style_matrix_list[i]
                 render_feat = render_features_list[i]
                 
-                # ic(style_feat.shape, style_matrix.shape, render_feat.shape, (curr_scene_features_mask == i).sum())
                 curr_target_feat, curr_target_matrix = nnfm_feat_replace(render_feat, style_feat, style_matrix)
                 target_feat[:, mask] = curr_target_feat
                 target_matrix[:, mask] = curr_target_matrix
@@ -60,10 +59,7 @@ class NNFMPhase(StylizePhase):
             shape_loss = (top2_values[:, 0] / top2_values[:, 1]).mean()
             imgtv_loss = get_imgtv_loss(render_image)
             
-            # concat_and_save_images("./image.jpg", render_image, render_depth)
-            
             loss = (
-                # Todo: check consistent_loss
                 self.trainer.config.style.lambda_consistent_loss * consistent_loss
                 + self.trainer.config.style.lambda_nnfm_loss * nnfm_loss
                 + self.trainer.config.style.lambda_content_loss * content_loss

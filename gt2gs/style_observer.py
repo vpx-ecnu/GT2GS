@@ -30,34 +30,20 @@ class ProgressTracker(TrainingObserver):
         
         self.bar_format = "{l_bar}{bar:50}{r_bar}"
         self.trainer = trainer
-        # self.global_pbar = tqdm(
-        #     total=trainer.total_iterations, 
-        #     desc=f"{'Global Process':<18}",
-        #     bar_format=self.bar_format,
-        #     position=0
-        # )
         self.phase_bars: Dict[int, tqdm] = {}
         self.current_phase: Optional[int] = None
         self.update_interval: int = 10
 
     def on_phase_changed(self, previous: int, current: int):
-        # if previous in self.phase_bars:
-        #     self.phase_bars[previous].close()
-        
         if current not in self.phase_bars:
             phase = self.trainer.phases[current]
             self.phase_bars[current] = tqdm(
                 total=phase.end_iter - phase.start_iter + 1,
                 desc=f"{phase.name.title():<18}",
                 bar_format=self.bar_format,
-                # position=current + 1
             ) 
 
     def on_iteration_end(self, metrics: TrainingMetrics):
-        
-        
-        # self.global_pbar.update(self.update_interval)
-        # self.global_pbar.set_postfix(metrics.losses)
         
         if metrics.phase in self.phase_bars:
             
@@ -70,12 +56,7 @@ class ProgressTracker(TrainingObserver):
 
 
     def on_training_end(self):
-        # if self.trainer.cur_phase in self.phase_bars:
-        #     self.phase_bars[self.trainer.cur_phase].close()
         pass 
-        # self.global_pbar.close()
-        # for phase_bar in self.phase_bars.values():
-        #     phase_bar.close()
             
             
 class CheckpointSaver(TrainingObserver):

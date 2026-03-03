@@ -84,7 +84,7 @@ class StyleConfig(Serializable):
     stylized_model_path: str = field(None, alias="-o")
     
     name: str = "default"
-    gta_type: str = "default"
+    gta_type: str = "clip"
     no_grad: bool = False
     
     

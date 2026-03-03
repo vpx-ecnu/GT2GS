@@ -25,12 +25,8 @@ from scripts.video_utils import viewmatrix
 # https://github.com/dvlab-research/Ref-NPR/blob/b738f3dd0e21ae5718c46f88d02be48e8bcfcbc1/opt/util/load_llff.py#L337
     
 def poses_avg(poses):
-    # poses [images, 3, 4] not [images, 3, 5]
-    # hwf = poses[0, :3, -1:]
-
     center = poses[:, :3, 3].mean(0)
     vec2 = normalize(poses[:, :3, 2].sum(0))
-    # ic(vec2)
     up = poses[:, :3, 1].sum(0)
     c2w = np.concatenate([viewmatrix(vec2, up, center)], 1)
 
@@ -39,7 +35,6 @@ def poses_avg(poses):
 def render_path_spiral(c2w, up, rads, focal, zrate, rots, N):
     render_poses = []
     rads = np.array(list(rads) + [1.0])
-    # hwf = c2w[:,4:5]
 
     for theta in np.linspace(0.0, 2.0 * np.pi * rots, N + 1)[:-1]:
         c = np.dot(
@@ -48,7 +43,6 @@ def render_path_spiral(c2w, up, rads, focal, zrate, rots, N):
             * rads,
         )
         z = normalize(c - np.dot(c2w[:3, :4], np.array([0, 0, -focal, 1.0])))
-        # render_poses.append(np.concatenate([viewmatrix(z, up, c), hwf], 1))
         render_poses.append(viewmatrix(z, up, c))
     render_poses = np.stack(render_poses)
     return render_poses

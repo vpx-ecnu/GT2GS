@@ -28,12 +28,6 @@ class StyleContext:
     style_image: Optional[torch.Tensor] = None  # [C, H, W]
     depth_images: Optional[torch.Tensor] = None # [N, C, H, W]
     
-    
-    # original_feats: Optional[torch.Tensor] = None # [N, C_feature, H//4, W//4]
-    # style_feats: Optional[torch.Tensor] = None
-    # style_matrix: Optional[torch.Tensor] = None
-    
-    
     style_features_list: list[torch.Tensor] = None
     style_matrix_list: list[torch.Tensor] = None
     
@@ -41,10 +35,6 @@ class StyleContext:
     scene_features_list: list[list[torch.Tensor]] = None
     scene_features_mask_list: list[torch.Tensor] = None
     
-    # project: Dict[Tuple, ProjectContext] = None
-    # scene_mask: Optional[torch.Tensor] = None
-    # style_mask: Optional[torch.Tensor] = None
-
 class CUDATimer:
     def __init__(self):
         self.start_event = torch.cuda.Event(enable_timing=True)
@@ -308,16 +298,13 @@ def tensor_img_transformation(tensor_image, transformation_matrix, idx):
     
     # Get image size
     rows, cols, _ = image_numpy.shape
-    # ic(rows, cols)
     # Apply the affine transformation using the top 2x3 part of the transformation matrix
     affine_matrix = transformation_matrix[:2, :]
     transformed_image = cv2.warpAffine(image_numpy, affine_matrix, (cols, rows), flags=cv2.INTER_LANCZOS4)
-    # ic(transformed_image.shape)
     
     new_size = int(min(rows, cols) / 1.414)
     
     transformed_image = center_crop(transformed_image, (new_size, new_size))
-    # render_RGBcolor_images("./debug/rotate.jpg", torch.from_numpy(transformed_image).permute(2, 0, 1))
     
     # Convert back to Tensor and normalize
     transformed_tensor = torch.from_numpy(transformed_image).permute(2, 0, 1).float().to(tensor_image.device)
@@ -325,7 +312,8 @@ def tensor_img_transformation(tensor_image, transformation_matrix, idx):
     return transformed_tensor
 
 
-
+# For this class, please reference to the original implementation in TrajectoryCrafter
+# https://github.com/TrajectoryCrafter/TrajectoryCrafter/blob/main/models/utils.py#L207
 class Warper:
     def __init__(self, resolution: tuple = None, device: str = 'gpu0'):
         self.resolution = resolution
@@ -374,28 +362,18 @@ class Warper:
         intrinsic1 = intrinsic1.to(self.device)
         intrinsic2 = intrinsic2.to(self.device)
 
-        # 只用深度图算
         # (b, h, w, 3, 1)
         trans_points1 = self.compute_transformed_points(depth1, transformation1, transformation2, intrinsic1,
                                                         intrinsic2)
         
-        # affine_mats = self.compute_feature_affine(depth1, transformation1, transformation2, intrinsic1,
-        #                                                 intrinsic2)
-        
         trans_coordinates = trans_points1[:, :, :, :2, 0] / trans_points1[:, :, :, 2:3, 0]
-        # (h, w, 2) 先前的坐标映射到新坐标系后的坐标
         pos_pre = trans_coordinates.squeeze(0)
-        # 因为原来里面是[w, h]，所以要进行变换
         pos_pre = pos_pre[..., [1, 0]]
         
         rows = torch.arange(h, device=self.device)  # (h,)
         cols = torch.arange(w, device=self.device)  # (w,)
         grid_i, grid_j = torch.meshgrid(rows, cols, indexing="ij")
         pos = torch.stack([grid_i, grid_j], dim=-1)  # (h, w, 2)
-        
-        # 直接拿特征图和图像空间的比例，用图像采样点直接转换为特征图采样点
-        # 应该下采样得到一个特征图层面的mask，然后算先验时要区分为mask内的部分和mask外的部分，mask外就是nnfm，mask内就要加上先验条件，包括矩阵方向相似度和特征相似度
-        
         
         trans_coordinates = trans_coordinates.permute(0, 3, 1, 2)
         # (b, 1, h, w)
@@ -405,48 +383,8 @@ class Warper:
         # (b, 2, h, w)
         flow12 = trans_coordinates - grid
 
-        # TODO: 目前忽略了遮挡关系
         warped_frame2, mask2 = self.bilinear_splatting(frame1, mask1, trans_depth1, flow12, None, is_image=True)
-        # warped_depth2 = self.bilinear_splatting(trans_depth1[:, :, None], mask1, trans_depth1, flow12, None,
-        #                                         is_image=False)[0][:, :, 0]
-        # return warped_frame2, mask2, warped_depth2, flow12
         return warped_frame2, mask2, pos_pre
-    
-    # def compute_feature_affine(self, depth1, transformation1, transformation2, intrinsic1, intrinsic2):
-    #     """
-    #     Computes transformed position for each pixel location
-    #     """
-    #     if self.resolution is not None:
-    #         assert depth1.shape[2:4] == self.resolution
-    #     b, _, h, w = depth1.shape
-    #     if intrinsic2 is None:
-    #         intrinsic2 = intrinsic1.clone()
-    #     transformation = torch.bmm(transformation2, torch.linalg.inv(transformation1))  # (b, 4, 4)
-
-    #     x1d = torch.arange(0, w)[None]
-    #     y1d = torch.arange(0, h)[:, None]
-    #     x2d = x1d.repeat([h, 1]).to(depth1)  # (h, w)
-    #     y2d = y1d.repeat([1, w]).to(depth1)  # (h, w)
-    #     ones_2d = torch.ones(size=(h, w)).to(depth1)  # (h, w)
-    #     ones_4d = ones_2d[None, :, :, None, None].repeat([b, 1, 1, 1, 1])  # (b, h, w, 1, 1)
-    #     # 原始坐标2d
-    #     pos_vectors_homo = torch.stack([x2d, y2d, ones_2d], dim=2)[None, :, :, :, None]  # (1, h, w, 3, 1)
-
-    #     intrinsic1_inv = torch.linalg.inv(intrinsic1)  # (b, 3, 3)
-    #     intrinsic1_inv_4d = intrinsic1_inv[:, None, None]  # (b, 1, 1, 3, 3)
-    #     intrinsic2_4d = intrinsic2[:, None, None]  # (b, 1, 1, 3, 3)
-    #     depth_4d = depth1[:, 0][:, :, :, None, None]  # (b, h, w, 1, 1)
-    #     trans_4d = transformation[:, None, None]  # (b, 1, 1, 4, 4)
-
-    #     unnormalized_pos = torch.matmul(intrinsic1_inv_4d, pos_vectors_homo)  # (b, h, w, 3, 1)
-    #     # 投到3d世界后
-    #     world_points = depth_4d * unnormalized_pos  # (b, h, w, 3, 1)
-    #     world_points_homo = torch.cat([world_points, ones_4d], dim=3)  # (b, h, w, 4, 1)
-    #     trans_world_homo = torch.matmul(trans_4d, world_points_homo)  # (b, h, w, 4, 1)
-    #     trans_world = trans_world_homo[:, :, :, :3]  # (b, h, w, 3, 1)
-    #     # 变回新视角的2d
-    #     trans_norm_points = torch.matmul(intrinsic2_4d, trans_world)  # (b, h, w, 3, 1)
-    #     return trans_norm_points
 
     def compute_transformed_points(self, depth1: torch.Tensor, transformation1: torch.Tensor, transformation2: torch.Tensor,
                                    intrinsic1: torch.Tensor, intrinsic2: Optional[torch.Tensor]):
@@ -466,7 +404,6 @@ class Warper:
         y2d = y1d.repeat([1, w]).to(depth1)  # (h, w)
         ones_2d = torch.ones(size=(h, w)).to(depth1)  # (h, w)
         ones_4d = ones_2d[None, :, :, None, None].repeat([b, 1, 1, 1, 1])  # (b, h, w, 1, 1)
-        # 原始坐标2d
         pos_vectors_homo = torch.stack([x2d, y2d, ones_2d], dim=2)[None, :, :, :, None]  # (1, h, w, 3, 1)
 
         intrinsic1_inv = torch.linalg.inv(intrinsic1)  # (b, 3, 3)
@@ -476,12 +413,10 @@ class Warper:
         trans_4d = transformation[:, None, None]  # (b, 1, 1, 4, 4)
 
         unnormalized_pos = torch.matmul(intrinsic1_inv_4d, pos_vectors_homo)  # (b, h, w, 3, 1)
-        # 投到3d世界后
         world_points = depth_4d * unnormalized_pos  # (b, h, w, 3, 1)
         world_points_homo = torch.cat([world_points, ones_4d], dim=3)  # (b, h, w, 4, 1)
         trans_world_homo = torch.matmul(trans_4d, world_points_homo)  # (b, h, w, 4, 1)
         trans_world = trans_world_homo[:, :, :, :3]  # (b, h, w, 3, 1)
-        # 变回新视角的2d
         trans_norm_points = torch.matmul(intrinsic2_4d, trans_world)  # (b, h, w, 3, 1)
         return trans_norm_points
 
@@ -673,31 +608,6 @@ class Warper:
         batch_grid = grid[None].repeat([b, 1, 1, 1])
         return batch_grid
 
-    # @staticmethod
-    # def read_image(path: Path) -> torch.Tensor:
-    #     image = skimage.io.imread(path.as_posix())
-    #     return image
-
-    # @staticmethod
-    # def read_depth(path: Path) -> torch.Tensor:
-    #     if path.suffix == '.png':
-    #         depth = skimage.io.imread(path.as_posix())
-    #     elif path.suffix == '.npy':
-    #         depth = numpy.load(path.as_posix())
-    #     elif path.suffix == '.npz':
-    #         with numpy.load(path.as_posix()) as depth_data:
-    #             depth = depth_data['depth']
-    #     elif path.suffix == '.exr':
-    #         exr_file = OpenEXR.InputFile(path.as_posix())
-    #         raw_bytes = exr_file.channel('B', Imath.PixelType(Imath.PixelType.FLOAT))
-    #         depth_vector = numpy.frombuffer(raw_bytes, dtype=numpy.float32)
-    #         height = exr_file.header()['displayWindow'].max.y + 1 - exr_file.header()['displayWindow'].min.y
-    #         width = exr_file.header()['displayWindow'].max.x + 1 - exr_file.header()['displayWindow'].min.x
-    #         depth = numpy.reshape(depth_vector, (height, width))
-    #     else:
-    #         raise RuntimeError(f'Unknown depth format: {path.suffix}')
-    #     return depth
-
     @staticmethod
     def camera_intrinsic_transform(capture_width=1920, capture_height=1080, patch_start_point: tuple = (0, 0)):
         start_y, start_x = patch_start_point
@@ -764,7 +674,6 @@ def get_enhanced_style_features(trainer, style_image):
     style_matrix = []
     
     _, style_img_width, style_img_height = style_image.shape
-    # ic(style_img_width, style_img_height)
     
     for i in range(0, 360):
         
@@ -775,45 +684,7 @@ def get_enhanced_style_features(trainer, style_image):
         # Rotate Image with center crop and get initial features
         M = generate_transformation_matrix(theta, Hx, Hy, style_img_width, style_img_height) # M: [3, 3]
         new_image = tensor_img_transformation(style_image, M, i)
-        img_feats = trainer.feature_extractor(new_image, False)
-        
-        
-        ######################################################################
-        # 不聚类
-        if trainer.config.style.gta_type == "default":
-            c, h, w = img_feats.shape
-            img_feats = img_feats.view(c, -1)  # [C, H, W] -> [C, H*W]
-            _, num_clusters = img_feats.shape
-        
-        ######################################################################
-        # 聚类
-        if trainer.config.style.gta_type == "kmeans":
-            # 处理为k-means可用形式
-            c, h, w = img_feats.shape
-            img_feats_flat = img_feats.permute(1, 2, 0).reshape(-1, c)  # [C, H, W] -> [H*W, C]
-            img_feats_np = img_feats_flat.cpu().numpy()
-            
-            # k-means
-            # TODO: 超参调整
-            num_clusters = 40
-            kmeans = KMeans(n_clusters=num_clusters, random_state=42, max_iter=300)
-            kmeans.fit(img_feats_np)
-            
-            # 获取每个像素对应的聚类标签
-            cluster_labels = kmeans.labels_  # [h * w]
-
-            # 获取聚类中心
-            cluster_centers = kmeans.cluster_centers_  # [num_clusters, c]
-
-            # 将每个像素替换为其所属聚类的中心向量
-            discretized_feats_flat = torch.tensor(cluster_centers, device=img_feats.device)
-
-            # 将特征还原回原始形状 [c, -1]
-            img_feats = discretized_feats_flat.view(-1, c).permute(1, 0) # [H*W, C] -> [C, H*W]
-        
-        ######################################################################
-        # 裁剪
-        # TODO: 后面可以手动控制变量范围
+        img_feats = trainer.feature_extractor(new_image, False)        
         
         if trainer.config.style.gta_type == "clip":
             c, h, w = img_feats.shape
@@ -824,11 +695,8 @@ def get_enhanced_style_features(trainer, style_image):
             start_w = (w - target_w) // 2
             
             cropped_tensor = img_feats[:, start_h:start_h + target_h, start_w:start_w + target_w]
-            # view必须张量在内存中连续，所以用reshape
             img_feats = cropped_tensor.reshape(c, -1)
             _, num_clusters = img_feats.shape
-        
-        # 将新特征组加入总特征集合（当前未考虑深度分组）
         
         enhanced_style_features.append(img_feats) # [C, num_clusters]
         
@@ -852,34 +720,15 @@ def get_original_style_features(trainer, style_image):
 
 
 def compute_rotation_angles(A, B, fh, fw):
-    """
-    计算特征图中每个位置的旋转角度（并行化版本）。
-    
-    参数：
-        A (torch.Tensor): 形状为 [h, w, 2] 的张量，表示原始坐标 [X, Y]
-        B (torch.Tensor): 形状为 [h, w, 2] 的张量，表示变换后的坐标 [X, Y]
-        fh (int): 特征图的高度
-        fw (int): 特征图的宽度
-    
-    返回：
-        C (torch.Tensor): 形状为 [1, fh, fw] 的张量，表示每个特征图像素的旋转角度
-    """
-    # 获取原图像尺寸
     h, w, _ = A.shape
     
-    # 计算池化步幅
     pool_size_h = h // fh
     pool_size_w = w // fw
     
-    # 确保尺寸匹配
-    # assert h % fh == 0 and w % fw == 0, "特征图尺寸必须能整除原图像尺寸"
-    
-    # 生成所有 (x, y) 位置的网格
     x_indices = torch.arange(fh, device=A.device)
     y_indices = torch.arange(fw, device=A.device)
     x_grid, y_grid = torch.meshgrid(x_indices, y_indices, indexing='ij')
     
-    # 计算四个角点的索引
     top_left_x = x_grid * pool_size_h
     top_left_y = y_grid * pool_size_w
     top_right_x = x_grid * pool_size_h
@@ -889,7 +738,6 @@ def compute_rotation_angles(A, B, fh, fw):
     bottom_right_x = (x_grid + 1) * pool_size_h - 1
     bottom_right_y = (y_grid + 1) * pool_size_w - 1
     
-    # 提取所有位置的角点，形状为 (fh, fw, 4, 2)
     A_S = torch.stack([
         A[top_left_x, top_left_y],
         A[top_right_x, top_right_y],
@@ -904,32 +752,25 @@ def compute_rotation_angles(A, B, fh, fw):
         B[bottom_right_x, bottom_right_y]
     ], dim=2).float()
     
-    # 批量中心化
-    mu_a = A_S.mean(dim=2, keepdim=True)  # 形状 (fh, fw, 1, 2)
-    mu_b = B_S.mean(dim=2, keepdim=True)  # 形状 (fh, fw, 1, 2)
-    A_centered = A_S - mu_a  # 形状 (fh, fw, 4, 2)
-    B_centered = B_S - mu_b  # 形状 (fh, fw, 4, 2)
+    mu_a = A_S.mean(dim=2, keepdim=True)
+    mu_b = B_S.mean(dim=2, keepdim=True)
+    A_centered = A_S - mu_a
+    B_centered = B_S - mu_b
     
-    # 批量构造 H 矩阵
     H = torch.einsum('fhij,fhjk->fhik', B_centered.permute(0, 1, 3, 2), A_centered)
     
-    # 批量 SVD 分解
     U, S, Vh = torch.svd(H)  # U, Vh: (fh, fw, 2, 2), S: (fh, fw, 2)
     
-    # 计算旋转矩阵 R = U @ Vh^T
     R = torch.einsum('fhij,fhjk->fhik', U, Vh.permute(0, 1, 3, 2))  # (fh, fw, 2, 2)
     
-    # 检查行列式并调整（确保 R 是旋转矩阵）
     det_R = R[:, :, 0, 0] * R[:, :, 1, 1] - R[:, :, 0, 1] * R[:, :, 1, 0]  # (fh, fw)
     mask = det_R < 0
     if mask.any():
-        U[mask, :, -1] = -U[mask, :, -1]  # 调整 U 的最后一列
+        U[mask, :, -1] = -U[mask, :, -1]
         R[mask] = torch.bmm(U[mask], Vh[mask].permute(0, 2, 1))
     
-    # 批量提取角度 theta
-    theta = torch.atan2(R[:, :, 1, 0], R[:, :, 0, 0])  # 形状 (fh, fw)
+    theta = torch.atan2(R[:, :, 1, 0], R[:, :, 0, 0])
     
-    # 赋值给 C
-    C = theta.unsqueeze(0)  # 形状 (1, fh, fw)
+    C = theta.unsqueeze(0) # (1, fh, fw)
     
     return C

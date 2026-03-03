@@ -26,8 +26,6 @@ class GeometryPhase(TrainingPhase):
                 self.trainer.config.opt.lambda_dssim * (1.0 - ssim_val)
             )
             self.update(iteration, loss)
-
-            # concat_and_save_images("./image_post.jpg", render_image, original_image)
               
         return {
             "Points": f"{self.trainer.gaussians._opacity.shape[0]}",
@@ -43,9 +41,6 @@ class GeometryPhase(TrainingPhase):
         
         gaussians = self.trainer.gaussians
         opt = self.trainer.config.opt
-        
-        # if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == self.start_iter):
-        #     gaussians.reset_opacity()
         
         if (
             (iteration - self.start_iter + 1) % opt.densification_interval == 0 and 

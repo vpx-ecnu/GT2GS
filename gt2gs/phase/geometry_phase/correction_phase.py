@@ -22,29 +22,10 @@ class CorrectionPhase(GeometryPhase):
     def on_phase_start(self):
     
         self.stylized_features = self.swap_features(self.trainer.gaussians._original_features_dc)
-        
-        # render_viewpoint(self.trainer, "./debug/start_correction")
-        # exit(0)
-        # self.stylized_features = self.trainer.gaussians._features_dc.clone().detach()
-        
-        # new_features_dc = self.trainer.gaussians._original_features_dc
-        # optimizable_tensors = self.trainer.gaussians.replace_tensor_to_optimizer(new_features_dc, "f_dc")
-        # self.trainer.gaussians._features_dc = optimizable_tensors["f_dc"]
     
     def on_phase_end(self):
         
         self.trainer.gaussians._original_features_dc = self.swap_features(self.stylized_features)
-        
-        # self.trainer.gaussians._original_features_dc = self.trainer.gaussians._features_dc.clone().detach()
-        
-        # new_features_dc = self.stylized_features.requires_grad_(True)
-        # optimizable_tensors = self.trainer.gaussians.replace_tensor_to_optimizer(new_features_dc, "f_dc")
-        # self.trainer.gaussians._features_dc = optimizable_tensors["f_dc"]
-    
-    # def update(self, iteration, loss):
-    #     super().update(iteration, loss)
-    #     render_RGBcolor_images("./image.jpg", self.render_pkg["render"])
-        
         
     def on_iteration(self, iteration: int):
         
@@ -66,8 +47,6 @@ class CorrectionPhase(GeometryPhase):
             )
             self.update(iteration, loss)
             
-            # concat_and_save_images("./image.jpg", render_image, render_depth)
-
             if self.trainer.config.app.need_log:
                 wandb.log({
                     "Loss": loss.item(),

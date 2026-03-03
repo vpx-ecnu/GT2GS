@@ -19,8 +19,6 @@ class TrainingPhase(ABC):
         
     def update(self, iteration, loss):
         
-        # ic(self.trainer.gaussians._original_features_dc.sum())
-        # ic(self.trainer.gaussians._features_rest.sum())
         loss.backward()
         self._densification(iteration)
         self.trainer.gaussians.optimizer.step()

@@ -15,7 +15,6 @@ from gt2gs.phase.geometry_phase.postprocess_phase import PostProcessPhase
 from gt2gs.phase.geometry_phase.correction_phase import CorrectionPhase
 from gt2gs.phase.stylize_phase.nnfm_phase import NNFMPhase
 from gt2gs.phase.stylize_phase.prior_phase import PriorPhase
-from gt2gs.phase.other_phase.lock_parameter_phase import LockParameterPhase
 from icecream import ic
 
 from gt2gs.style_utils import *
@@ -37,17 +36,13 @@ class StyleTrainer:
         self._init_observers()
         
         for self.iteration in range(1, self.total_iterations + 1):
+            # For GUI debugging, please uncomment the following line. 
+            # Note that it doesn't be tested for a long time and may cause some unexpected issues.
             # self._handle_gui()
             self._train_iteration()
             
         for observer in self.observers:
             observer.on_training_end()
-            
-        # for (name, time) in self.meta_information:
-            
-        #     name_width = 15
-        #     print(f"Phase Name: {name:<{name_width}}, Phase Time: {time:.2f}ms")
-    
         
     def _train_iteration(self):
         
@@ -62,8 +57,6 @@ class StyleTrainer:
         self.gaussians.update_learning_rate(self.iteration)
         self.config.set_debug(True if self.iteration - 1 == self.config.app.debug_from else False)
         losses, timing = phase.on_iteration(self.iteration)
-        # losses = {}
-        # timing = 1
         phase.time += timing
         
         metrics = TrainingMetrics(
@@ -84,7 +77,6 @@ class StyleTrainer:
             self.meta_information.append((self.phases[self.cur_phase].name, 
                                           self.phases[self.cur_phase].time))
             self.phases[self.cur_phase] = None
-            # del self.phases[self.cur_phase]
         
         last_phase = self.cur_phase
         self.cur_phase = new_phase
@@ -146,32 +138,24 @@ class StyleTrainer:
         
         _add_phase(PreProcessPhase, "Pre Process", self.config.style.preprocess_iter, self.config.style.pre_densify)
 
-        # TODO: only Prior   
         for i in range(self.config.style.rounds):
             enable_densify = self.config.style.enable_stylize_densify and (i < self.config.style.rounds // 2)
-            # ic(enable_densify)
             phase = PriorPhase if self.config.style.enable_prior else NNFMPhase
+            # For style transfer, we find that the prior phase is not very effective, so we directly use NNFMPhase for all rounds. 
+            # For texture style transfer, we keep the prior phase as it is important for stylization.
             phase_name = f"Prior {i}" if self.config.style.enable_prior else f"NNFM {i}"
             _add_phase(phase, phase_name, self.config.style.style_iter, enable_densify)
-            
             if self.config.style.enable_geometry_correction:
                 _add_phase(CorrectionPhase, f"Correction {i}", self.config.style.correction_iter, False)
             
             if self.config.style.enable_weighted:
-                # if i > self.config.style.rounds // 2:
                 _add_phase(NNFMPhase,  f"NNFM {i}", self.config.style.style_iter, enable_densify)
-
-                # _add_phase(PriorPhase,  f"Prior_ {i}", self.config.style.style_iter, enable_densify)
-                # _add_phase(NNFMPhase,  f"NNFM {i}", self.config.style.style_iter, enable_densify)
                 if self.config.style.enable_geometry_correction:
                     _add_phase(CorrectionPhase, f"Correction {i}", self.config.style.correction_iter, False)
                 
         
         _add_phase(PostProcessPhase, "Post Process", self.config.style.postpreprocess_iter, False)
         
-        # print(phase_uid, phase_iter)
-        
-
     def _init_observers(self):
         
         self.observers: List[TrainingObserver] = [
