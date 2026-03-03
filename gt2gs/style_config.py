@@ -115,7 +115,6 @@ class StyleConfig(Serializable):
     
     rounds: int = 10
     style_iter: int = 80
-    geometry_iter: int = 0
     
     style_image: str = None
     style_image_size: int = 256
