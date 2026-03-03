@@ -19,5 +19,6 @@ image_llff.jpg
 *.png
 test/
 experiment
+experiments
 CameraViewer/
 *.sh
