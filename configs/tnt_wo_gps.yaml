@@ -10,7 +10,7 @@ style:
   # stylized_model_path: output/2025-03-28_17-28-33
 
   enable_stylize_densify: true
-  enable_geometry_correction: true
+  enable_geometry_correction: false
   enable_nnfm_correction: true
   enable_color_transfer: true
   enable_feature_enhancement: true
@@ -30,7 +30,7 @@ style:
   no_grad: false
   postpreprocess_iter: 1000
   preprocess_iter: 1000
-  enable_prior: false
+  # enable_prior: false
   
   rounds: 6
 
@@ -38,5 +38,11 @@ style:
 
   style_iter: 400
   correction_iter: 1000
-  enable_geometry_correction: true
+  enable_geometry_correction: false
+  enable_weighted: true
+  enable_prior: true
+  theta: 0
   
+  
+video:
+  num_frames: 240

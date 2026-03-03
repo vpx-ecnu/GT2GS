@@ -4,14 +4,14 @@ app:
   port: 6009
 model:
   data_device: cuda
-  model_path: /Datasets/radegs_0/llff/flower
-  source_path: /Datasets/preprocessed_data/llff/flower
+  model_path: /Datasets/radegs_0/llff/fern
+  source_path: /Datasets/preprocessed_data/llff/fern
 
 style:
   # stylized_model_path: output/2025-03-28_17-28-33
 
   enable_stylize_densify: true
-  enable_geometry_correction: true
+  enable_geometry_correction: false
   enable_nnfm_correction: true
   enable_color_transfer: true
   enable_feature_enhancement: true
@@ -30,9 +30,13 @@ style:
   no_grad: false
   postpreprocess_iter: 400
   preprocess_iter: 400
+
   # enable_prior: false
   
-  style_image: ./styles/14.jpg
-  
-  enable_geometry_correction: true
+  style_image: ./styles/black_white.jpg
+
+  enable_geometry_correction: false
+  enable_weighted: true
+  enable_prior: true
+  theta: 0
 

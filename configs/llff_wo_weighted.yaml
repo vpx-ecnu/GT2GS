@@ -4,39 +4,39 @@ app:
   port: 6009
 model:
   data_device: cuda
-  model_path: /Datasets/radegs_0/tnt/family
-  source_path: /Datasets/preprocessed_data/tnt/family
+  model_path: /Datasets/radegs_0/llff/fern
+  source_path: /Datasets/preprocessed_data/llff/fern
+
 style:
   # stylized_model_path: output/2025-03-28_17-28-33
 
   enable_stylize_densify: true
   enable_geometry_correction: true
-  enable_nnfm_correction: true
+  enable_nnfm_correction: false
   enable_color_transfer: true
   enable_feature_enhancement: true
   enable_prior: false
-
-  geometry_iter: 0
+  # densify: true
   gta_type: clip
   init_densification_downsample: 2
   init_densification_image_intervals: 10
   lambda_consistent_loss: 2
-  lambda_content_loss: 0
+  lambda_content_loss: 0.005
   lambda_depth_loss: 0.01
   lambda_imgtv_loss: 0.02
   lambda_prior_loss: 2
   lambda_shape_loss: 0.1
   name: default
   no_grad: false
-  postpreprocess_iter: 1000
-  preprocess_iter: 1000
-  enable_prior: false
-  
-  rounds: 6
+  postpreprocess_iter: 400
+  preprocess_iter: 400
 
+  # enable_prior: false
+  
   style_image: ./styles/black_white.jpg
 
-  style_iter: 400
-  correction_iter: 1000
   enable_geometry_correction: true
-  
+  enable_weighted: false
+  enable_prior: true
+  theta: 0
+
