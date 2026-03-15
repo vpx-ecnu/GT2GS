@@ -32,7 +32,7 @@ cd GT2-GS
 
 # Install Python dependencies
 conda env create -f environment.yaml
-conda activate GT2
+conda activate GT2-GS
 pip install gs/submodules/diff-gaussian-rasterization
 pip install gs/submodules/simple-knn
 ```
