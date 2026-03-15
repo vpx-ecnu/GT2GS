@@ -27,8 +27,8 @@ This repository contains the official implementation of the paper **"Geometry-aw
 ### Conda
 ```bash
 # Clone repository with submodules
-git clone https://github.com/vpx-ecnu/GT2 --recursive
-cd GT2
+git clone https://github.com/vpx-ecnu/GT2-GS --recursive
+cd GT2-GS
 
 # Install Python dependencies
 conda env create -f environment.yaml
@@ -67,8 +67,8 @@ You can also contact [Garv1tum](https://github.com/Grav1tum) and [lzlcs](https:/
 
 If you find this project useful, please give a star⭐ to this repo and cite our paper:
 ```bibtex
-@article{liu2025gt,
-  title={GT\^{} 2-GS: Geometry-aware Texture Transfer for Gaussian Splatting},
+@article{liu2025gt2,
+  title={GT2-GS: Geometry-aware Texture Transfer for Gaussian Splatting},
   author={Liu, Wenjie and Liu, Zhongliang and Shu, Junwei and Wang, Changbo and Li, Yang},
   journal={arXiv preprint arXiv:2505.15208},
   year={2025}
