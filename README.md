@@ -67,10 +67,13 @@ You can also contact [Garv1tum](https://github.com/Grav1tum) and [lzlcs](https:/
 
 If you find this project useful, please give a star⭐ to this repo and cite our paper:
 ```bibtex
-@article{liu2025gt2,
+@inproceedings{liu2026gt2,
   title={GT2-GS: Geometry-aware Texture Transfer for Gaussian Splatting},
   author={Liu, Wenjie and Liu, Zhongliang and Shu, Junwei and Wang, Changbo and Li, Yang},
-  journal={arXiv preprint arXiv:2505.15208},
-  year={2025}
+  booktitle={Proceedings of the AAAI Conference on Artificial Intelligence},
+  volume={40},
+  number={9},
+  pages={7296--7304},
+  year={2026}
 }
 ```
